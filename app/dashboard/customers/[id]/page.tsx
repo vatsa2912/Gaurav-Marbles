@@ -76,21 +76,41 @@ export default function CustomerDetailsPage() {
         setLoading(true);
         setError("");
 
-        // Get customer
-        const customerRef = doc(db, "customers", customerId);
-        const customerSnap = await getDoc(customerRef);
-
-        if (!customerSnap.exists()) {
+        if (!customerId) {
           if (isMounted) setError("Customer not found.");
           return;
         }
 
-        const customerData = customerSnap.data();
+        // Get customer from 'customers' or 'parties' collection
+        let customerData: { name?: string; phone?: string; address?: string } | null = null;
+        let resolvedId = customerId;
+
+        const customerRef = doc(db, "customers", customerId);
+        const customerSnap = await getDoc(customerRef);
+
+        if (customerSnap.exists()) {
+          customerData = customerSnap.data();
+          resolvedId = customerSnap.id;
+        } else {
+          // Check parties collection
+          const partyRef = doc(db, "parties", customerId);
+          const partySnap = await getDoc(partyRef);
+          if (partySnap.exists()) {
+            customerData = partySnap.data();
+            resolvedId = partySnap.id;
+          }
+        }
+
+        if (!customerData) {
+          if (isMounted) setError("Customer not found.");
+          return;
+        }
+
         const customerName = customerData.name || "";
 
         if (isMounted) {
           setCustomer({
-            id: customerSnap.id,
+            id: resolvedId,
             name: customerName,
             phone: customerData.phone || "",
             address: customerData.address || "",
@@ -609,9 +629,13 @@ export default function CustomerDetailsPage() {
                       <td>{payment.paymentMethod || "Cash"}</td>
                       <td>
                         {payment.saleNumber ? (
-                          <span className="font-medium text-blue-600">
+                          <Link
+                            href={`/dashboard/sales/${payment.saleId || payment.saleNumber}`}
+                            className="font-medium text-blue-600 hover:underline"
+                            title="View Sale Details"
+                          >
                             Sale #{payment.saleNumber}
-                          </span>
+                          </Link>
                         ) : (
                           <span className="text-muted italic">General Account Credit</span>
                         )}
@@ -682,7 +706,14 @@ export default function CustomerDetailsPage() {
 
                     return sale.items.length === 0 ? (
                       <tr key={sale.id}>
-                        <td>#{sale.saleNumber}</td>
+                        <td>
+                          <Link
+                            href={`/dashboard/sales/${sale.id}`}
+                            className="font-semibold text-blue-600 hover:underline"
+                          >
+                            #{sale.saleNumber}
+                          </Link>
+                        </td>
                         <td>{formatDisplayDate(sale.saleDate)}</td>
                         <td>
                           <span className={`px-2 py-0.5 rounded text-xs font-semibold ${statusBadgeClass}`}>
@@ -691,7 +722,9 @@ export default function CustomerDetailsPage() {
                         </td>
                         <td colSpan={7} className="text-muted">No items</td>
                         <td>
-                          <button onClick={() => router.push(`/dashboard/sales/${sale.id}`)} className="btn-ghost">View</button>
+                          <Link href={`/dashboard/sales/${sale.id}`} className="btn-secondary text-xs px-2.5 py-1">
+                            View
+                          </Link>
                         </td>
                       </tr>
                     ) : (
@@ -709,7 +742,14 @@ export default function CustomerDetailsPage() {
                           <tr key={`${sale.id}-${itemIdx}`}>
                             {itemIdx === 0 && (
                               <>
-                                <td rowSpan={sale.items.length}>#{sale.saleNumber}</td>
+                                <td rowSpan={sale.items.length}>
+                                  <Link
+                                    href={`/dashboard/sales/${sale.id}`}
+                                    className="font-semibold text-blue-600 hover:underline"
+                                  >
+                                    #{sale.saleNumber}
+                                  </Link>
+                                </td>
                                 <td rowSpan={sale.items.length}>
                                   {formatDisplayDate(sale.saleDate)}
                                 </td>
@@ -739,7 +779,9 @@ export default function CustomerDetailsPage() {
                             </td>
                             {itemIdx === 0 && (
                               <td rowSpan={sale.items.length}>
-                                <button onClick={() => router.push(`/dashboard/sales/${sale.id}`)} className="btn-ghost">View</button>
+                                <Link href={`/dashboard/sales/${sale.id}`} className="btn-secondary text-xs px-2.5 py-1">
+                                  View
+                                </Link>
                               </td>
                             )}
                           </tr>

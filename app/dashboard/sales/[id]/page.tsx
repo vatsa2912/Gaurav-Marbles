@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   normaliseLots,
   restoreFromAllocations,
@@ -78,18 +79,38 @@ export default function SaleDetailsPage() {
   const [paymentError, setPaymentError] = useState("");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  const saleId = params.id as string;
+  const saleId = (params?.id as string) || "";
 
   useEffect(() => {
     let isMounted = true;
     const loadSale = async () => {
       try {
+        if (!saleId) {
+          if (isMounted) setLoading(false);
+          return;
+        }
+
         const saleRef = doc(db, "sales", saleId);
         const snapshot = await getDoc(saleRef);
 
         if (isMounted) {
           if (snapshot.exists()) {
-            setSale({ ...(snapshot.data() as Sale), id: snapshot.id });
+            const rawData = snapshot.data();
+            let items = rawData.items || [];
+            if ((!items || items.length === 0) && rawData.productName) {
+              items = [
+                {
+                  productId: rawData.productId || "",
+                  productName: rawData.productName || "Unknown Product",
+                  quantity: Number(rawData.quantity) || 0,
+                  unit: rawData.unit || "unit",
+                  sellingPrice: Number(rawData.rate ?? rawData.sellingPrice) || 0,
+                  costPrice: Number(rawData.costPrice) || 0,
+                  total: Number(rawData.totalAmount || rawData.total) || 0,
+                },
+              ];
+            }
+            setSale({ ...rawData, items, id: snapshot.id } as Sale);
           } else {
             setSale(null);
           }
@@ -120,6 +141,8 @@ export default function SaleDetailsPage() {
 
     if (saleId) {
       loadSale();
+    } else {
+      setLoading(false);
     }
     return () => {
       isMounted = false;
@@ -497,9 +520,20 @@ export default function SaleDetailsPage() {
                 Customer Name
               </p>
 
-              <p className="mt-1 font-medium">
-                {sale.customerName}
-              </p>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="font-medium">
+                  {sale.customerName}
+                </p>
+                {sale.customerName && (
+                  <Link
+                    href={`/dashboard/accounts/customer-ledger?party=${encodeURIComponent(sale.customerName)}`}
+                    className="text-xs font-semibold text-blue-600 hover:text-blue-800 underline"
+                    title="View Tally-Style Customer Ledger"
+                  >
+                    View Ledger ↗
+                  </Link>
+                )}
+              </div>
             </div>
 
             <div>
@@ -629,6 +663,7 @@ export default function SaleDetailsPage() {
                   <th>Purchase Cost</th>
                   <th>Total Cost</th>
                   <th>Profit</th>
+                  <th className="text-center">Action</th>
                 </tr>
               </thead>
 
@@ -642,7 +677,19 @@ export default function SaleDetailsPage() {
                   const profit = totalSelling - costTotal;
                   return (
                     <tr key={index}>
-                      <td className="font-medium">{item.productName}</td>
+                      <td className="font-medium">
+                        {item.productId ? (
+                          <Link
+                            href={`/dashboard/products/${item.productId}`}
+                            className="text-blue-600 hover:underline"
+                            title="View Product Details"
+                          >
+                            {item.productName}
+                          </Link>
+                        ) : (
+                          item.productName
+                        )}
+                      </td>
                       <td>{qty}</td>
                       <td>{item.unit}</td>
                       <td>₹{sp.toLocaleString("en-IN")}</td>
@@ -659,6 +706,18 @@ export default function SaleDetailsPage() {
                       </td>
                       <td style={{ color: profit >= 0 ? "#16a34a" : "#dc2626", fontWeight: 500 }}>
                         ₹{profit.toLocaleString("en-IN")}
+                      </td>
+                      <td className="text-center">
+                        {item.productId ? (
+                          <Link
+                            href={`/dashboard/products/${item.productId}`}
+                            className="btn-secondary text-xs px-2.5 py-1"
+                          >
+                            View Product
+                          </Link>
+                        ) : (
+                          <span className="text-muted text-xs">—</span>
+                        )}
                       </td>
                     </tr>
                   );

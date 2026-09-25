@@ -91,6 +91,10 @@ export default function ProductDetailPage({
     const loadData = async () => {
       try {
         setLoading(true);
+        if (!id) {
+          if (isMounted) setError("Product not found.");
+          return;
+        }
         // 1. Fetch Product
         const prodSnap = await getDoc(doc(db, "products", id));
         if (!prodSnap.exists()) {
@@ -644,11 +648,12 @@ export default function ProductDetailPage({
                     <th className="text-left font-medium">Invoice</th>
                     <th className="text-left font-medium">Lot Number</th>
                     <th className="text-center font-medium">Payment Method</th>
+                    <th className="text-center font-medium">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedPurchases.map((item) => (
-                    <tr key={item.id}>
+                  {sortedPurchases.map((item, idx) => (
+                    <tr key={`${item.id}-${idx}`}>
                       <td>{formatDisplayDate(item.purchaseDate)}</td>
                       <td className="font-medium text-gray-800">{item.supplierName}</td>
                       <td className="text-right font-semibold">
@@ -661,13 +666,27 @@ export default function ProductDetailPage({
                         {item.sellingPrice ? `₹${item.sellingPrice.toLocaleString("en-IN")}` : "—"}
                       </td>
                       <td className="text-gray-600 text-xs font-mono">
-                        {item.supplierInvoice || `#${item.purchaseNumber}` || "—"}
+                        <Link
+                          href={`/dashboard/purchases/${item.id}`}
+                          className="text-purple-600 hover:underline font-semibold"
+                          title="View Purchase Details"
+                        >
+                          {item.supplierInvoice || `#${item.purchaseNumber}` || "View"}
+                        </Link>
                       </td>
                       <td className="text-gray-600 text-xs font-mono">
                         {item.lotNumber || "—"}
                       </td>
                       <td className="text-center">
                         <span className="badge-gray text-xs">{item.paymentMethod || "—"}</span>
+                      </td>
+                      <td className="text-center">
+                        <Link
+                          href={`/dashboard/purchases/${item.id}`}
+                          className="btn-secondary text-xs px-2.5 py-1"
+                        >
+                          View
+                        </Link>
                       </td>
                     </tr>
                   ))}
@@ -716,14 +735,21 @@ export default function ProductDetailPage({
                     <th className="text-right font-medium">Selling Price</th>
                     <th className="text-right font-medium">Amount</th>
                     <th className="text-center font-medium">Payment Method</th>
+                    <th className="text-center font-medium">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedSales.map((item) => (
-                    <tr key={item.id}>
+                  {sortedSales.map((item, idx) => (
+                    <tr key={`${item.id}-${idx}`}>
                       <td>{formatDisplayDate(item.saleDate)}</td>
                       <td className="font-mono text-xs font-semibold text-blue-600">
-                        {item.invoiceNumber || `#${item.saleNumber}`}
+                        <Link
+                          href={`/dashboard/sales/${item.id}`}
+                          className="hover:underline"
+                          title="View Sale Details"
+                        >
+                          {item.invoiceNumber || `#${item.saleNumber}`}
+                        </Link>
                       </td>
                       <td className="font-medium text-gray-800">{item.customerName}</td>
                       <td className="text-right font-semibold">
@@ -737,6 +763,14 @@ export default function ProductDetailPage({
                       </td>
                       <td className="text-center">
                         <span className="badge-gray text-xs">{item.paymentMethod || "—"}</span>
+                      </td>
+                      <td className="text-center">
+                        <Link
+                          href={`/dashboard/sales/${item.id}`}
+                          className="btn-secondary text-xs px-2.5 py-1"
+                        >
+                          View
+                        </Link>
                       </td>
                     </tr>
                   ))}

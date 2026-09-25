@@ -50,7 +50,11 @@ export default function PurchaseDetailsPage() {
     let isMounted = true;
     const loadPurchase = async () => {
       try {
-        const id = params.id as string;
+        const id = params?.id as string;
+        if (!id) {
+          if (isMounted) setLoading(false);
+          return;
+        }
 
         const snapshot = await getDoc(
           doc(db, "purchases", id)
@@ -58,7 +62,22 @@ export default function PurchaseDetailsPage() {
 
         if (isMounted) {
           if (snapshot.exists()) {
-            setPurchase(snapshot.data() as Purchase);
+            const rawData = snapshot.data();
+            let items = rawData.items || [];
+            if ((!items || items.length === 0) && rawData.productName) {
+              items = [
+                {
+                  productId: rawData.productId || "",
+                  productName: rawData.productName || "Unknown Product",
+                  quantity: Number(rawData.quantity) || 0,
+                  unit: rawData.unit || "unit",
+                  purchasePrice: Number(rawData.purchasePrice) || 0,
+                  sellingPrice: rawData.sellingPrice,
+                  total: Number(rawData.totalAmount || rawData.total) || 0,
+                },
+              ];
+            }
+            setPurchase({ ...rawData, items } as Purchase);
           }
         }
       } catch (error) {
@@ -371,6 +390,7 @@ export default function PurchaseDetailsPage() {
                   <th>Purchase Price</th>
                   <th>Selling Price</th>
                   <th>Total</th>
+                  <th className="text-center">Action</th>
                 </tr>
               </thead>
 
@@ -381,7 +401,17 @@ export default function PurchaseDetailsPage() {
                   <tr key={index}>
 
                     <td className="font-medium">
-                      {item.productName}
+                      {item.productId ? (
+                        <Link
+                          href={`/dashboard/products/${item.productId}`}
+                          className="text-blue-600 hover:underline"
+                          title="View Product Details"
+                        >
+                          {item.productName}
+                        </Link>
+                      ) : (
+                        item.productName
+                      )}
                     </td>
 
                     <td className="font-semibold">
@@ -402,6 +432,19 @@ export default function PurchaseDetailsPage() {
 
                     <td className="font-bold">
                       ₹{item.total.toLocaleString("en-IN")}
+                    </td>
+
+                    <td className="text-center">
+                      {item.productId ? (
+                        <Link
+                          href={`/dashboard/products/${item.productId}`}
+                          className="btn-secondary text-xs px-2.5 py-1"
+                        >
+                          View Product
+                        </Link>
+                      ) : (
+                        <span className="text-muted text-xs">—</span>
+                      )}
                     </td>
 
                   </tr>

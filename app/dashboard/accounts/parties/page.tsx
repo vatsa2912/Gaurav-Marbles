@@ -309,10 +309,20 @@ export default function PartiesPage() {
                             party.id
                           )}`;
 
+                    const viewLink =
+                      party.type === "Customer"
+                        ? `/dashboard/customers/${party.id}`
+                        : `/dashboard/suppliers/${party.id}`;
+
                     return (
                       <tr key={party.id} className="hover:bg-gray-50 transition">
                         <td className="py-3 px-4">
-                          <div className="font-semibold text-gray-900">{party.name}</div>
+                          <Link
+                            href={viewLink}
+                            className="font-semibold text-gray-900 hover:text-blue-600 hover:underline"
+                          >
+                            {party.name}
+                          </Link>
                           {party.gstin && (
                             <div className="text-[11px] font-mono text-gray-500">
                               GST: {party.gstin}
@@ -376,6 +386,14 @@ export default function PartiesPage() {
                         </td>
                         <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
+                            <Link
+                              href={viewLink}
+                              className="px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded transition"
+                              title="View Details"
+                            >
+                              View
+                            </Link>
+
                             <Link
                               href={ledgerLink}
                               className="px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded transition"

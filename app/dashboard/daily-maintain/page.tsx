@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   collection,
   getDocs,
@@ -66,6 +68,7 @@ type DailyPayment = {
 };
 
 export default function DailyMaintainPage() {
+  const router = useRouter();
   const [selectedDate, setSelectedDate] = useState(() => {
     return new Date().toISOString().split("T")[0];
   });
@@ -794,9 +797,13 @@ export default function DailyMaintainPage() {
                         return (
                           <tr key={`sale-${s.id}`}>
                             <td>
-                              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                              <Link
+                                href={`/dashboard/sales/${s.id}`}
+                                className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 hover:underline inline-block"
+                                title="View Sale Details"
+                              >
                                 Sale #{s.saleNumber}
-                              </span>
+                              </Link>
                             </td>
                             <td>{s.customerName}</td>
                             <td className="text-center text-xs text-gray-500">
@@ -837,9 +844,13 @@ export default function DailyMaintainPage() {
                         return (
                           <tr key={`pur-${p.id}`}>
                             <td>
-                              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-purple-100 text-purple-800">
+                              <Link
+                                href={`/dashboard/purchases/${p.id}`}
+                                className="text-xs font-semibold px-2 py-0.5 rounded bg-purple-100 text-purple-800 hover:underline inline-block"
+                                title="View Purchase Details"
+                              >
                                 Purchase #{p.purchaseNumber}
-                              </span>
+                              </Link>
                             </td>
                             <td>{p.supplierName}</td>
                             <td className="text-center text-xs text-gray-500">
@@ -859,9 +870,13 @@ export default function DailyMaintainPage() {
                       .map((e) => (
                         <tr key={`exp-${e.id}`}>
                           <td>
-                            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-red-100 text-red-800">
+                            <Link
+                              href={`/dashboard/expenses/${e.id}`}
+                              className="text-xs font-semibold px-2 py-0.5 rounded bg-red-100 text-red-800 hover:underline inline-block"
+                              title="View Expense Details"
+                            >
                               Expense ({e.category})
-                            </span>
+                            </Link>
                           </td>
                           <td>{e.title} {e.notes ? `— ${e.notes}` : ""}</td>
                           <td className="text-center text-xs text-gray-500">Cash</td>
@@ -902,6 +917,7 @@ export default function DailyMaintainPage() {
                       <th className="text-right font-medium">UPI (₹)</th>
                       <th className="text-right font-medium">Bank (₹)</th>
                       <th className="text-right font-medium">Credit / Due (₹)</th>
+                      <th className="text-center font-medium">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -914,7 +930,15 @@ export default function DailyMaintainPage() {
 
                       return (
                         <tr key={s.id}>
-                          <td className="font-semibold text-blue-600">#{s.saleNumber}</td>
+                          <td>
+                            <Link
+                              href={`/dashboard/sales/${s.id}`}
+                              className="font-semibold text-blue-600 hover:underline"
+                              title="View Sale Details"
+                            >
+                              #{s.saleNumber}
+                            </Link>
+                          </td>
                           <td className="font-medium text-gray-800">{s.customerName}</td>
                           <td className="text-center">
                             <span className="text-xs font-semibold px-2 py-0.5 rounded bg-gray-100 text-gray-700">
@@ -936,6 +960,14 @@ export default function DailyMaintainPage() {
                           <td className="text-right text-amber-700 font-semibold">
                             {credit > 0 ? `₹${credit.toLocaleString("en-IN")}` : "—"}
                           </td>
+                          <td className="text-center">
+                            <Link
+                              href={`/dashboard/sales/${s.id}`}
+                              className="btn-secondary text-xs px-2.5 py-1"
+                            >
+                              View
+                            </Link>
+                          </td>
                         </tr>
                       );
                     })}
@@ -948,6 +980,7 @@ export default function DailyMaintainPage() {
                       <td className="text-right text-blue-700">₹{calculations.upiFromSales.toLocaleString("en-IN")}</td>
                       <td className="text-right text-purple-700">₹{calculations.bankFromSales.toLocaleString("en-IN")}</td>
                       <td className="text-right text-amber-700">₹{calculations.creditFromSales.toLocaleString("en-IN")}</td>
+                      <td></td>
                     </tr>
                   </tfoot>
                 </table>
@@ -970,6 +1003,7 @@ export default function DailyMaintainPage() {
                       <th className="text-right font-medium">UPI (₹)</th>
                       <th className="text-right font-medium">Bank (₹)</th>
                       <th className="text-right font-medium">Credit / Due (₹)</th>
+                      <th className="text-center font-medium">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -982,7 +1016,15 @@ export default function DailyMaintainPage() {
 
                       return (
                         <tr key={p.id}>
-                          <td className="font-semibold text-purple-600">#{p.purchaseNumber}</td>
+                          <td>
+                            <Link
+                              href={`/dashboard/purchases/${p.id}`}
+                              className="font-semibold text-purple-600 hover:underline"
+                              title="View Purchase Details"
+                            >
+                              #{p.purchaseNumber}
+                            </Link>
+                          </td>
                           <td className="font-medium text-gray-800">{p.supplierName}</td>
                           <td className="text-center">
                             <span className="text-xs font-semibold px-2 py-0.5 rounded bg-gray-100 text-gray-700">
@@ -1004,6 +1046,14 @@ export default function DailyMaintainPage() {
                           <td className="text-right text-amber-700 font-semibold">
                             {credit > 0 ? `₹${credit.toLocaleString("en-IN")}` : "—"}
                           </td>
+                          <td className="text-center">
+                            <Link
+                              href={`/dashboard/purchases/${p.id}`}
+                              className="btn-secondary text-xs px-2.5 py-1"
+                            >
+                              View
+                            </Link>
+                          </td>
                         </tr>
                       );
                     })}
@@ -1016,6 +1066,7 @@ export default function DailyMaintainPage() {
                       <td className="text-right text-blue-700">₹{calculations.upiToPurchases.toLocaleString("en-IN")}</td>
                       <td className="text-right text-purple-700">₹{calculations.bankToPurchases.toLocaleString("en-IN")}</td>
                       <td className="text-right text-amber-700">₹{calculations.creditToPurchases.toLocaleString("en-IN")}</td>
+                      <td></td>
                     </tr>
                   </tfoot>
                 </table>
@@ -1035,12 +1086,21 @@ export default function DailyMaintainPage() {
                       <th className="text-center font-medium">Payment Mode</th>
                       <th className="text-left font-medium">Notes</th>
                       <th className="text-right font-medium">Amount (₹)</th>
+                      <th className="text-center font-medium">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {expenses.map((e) => (
                       <tr key={e.id}>
-                        <td className="font-semibold text-gray-900">{e.title}</td>
+                        <td className="font-semibold text-gray-900">
+                          <Link
+                            href={`/dashboard/expenses/${e.id}`}
+                            className="hover:text-blue-600 hover:underline"
+                            title="View Expense Details"
+                          >
+                            {e.title}
+                          </Link>
+                        </td>
                         <td>
                           <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-700">
                             {e.category}
@@ -1055,6 +1115,14 @@ export default function DailyMaintainPage() {
                         <td className="text-right font-bold text-red-600">
                           ₹{e.amount.toLocaleString("en-IN")}
                         </td>
+                        <td className="text-center">
+                          <Link
+                            href={`/dashboard/expenses/${e.id}`}
+                            className="btn-secondary text-xs px-2.5 py-1"
+                          >
+                            View
+                          </Link>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1064,6 +1132,7 @@ export default function DailyMaintainPage() {
                       <td className="text-right text-red-600">
                         ₹{calculations.totalExpensesAmount.toLocaleString("en-IN")}
                       </td>
+                      <td></td>
                     </tr>
                   </tfoot>
                 </table>

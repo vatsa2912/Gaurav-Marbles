@@ -308,13 +308,12 @@ export default function InvoicesPage() {
                       </td>
                       <td className="text-center">
                         <div className="flex items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => router.push(`/dashboard/invoices/${inv.id}`)}
+                          <Link
+                            href={`/dashboard/invoices/${inv.id}`}
                             className="text-xs font-semibold text-blue-600 hover:underline"
                           >
                             View / Print
-                          </button>
+                          </Link>
                           <button
                             type="button"
                             onClick={() => handleDelete(inv.id, inv.invoiceNumber)}

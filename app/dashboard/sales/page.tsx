@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   formatDisplayDate,
   matchesDateRange,
@@ -261,8 +262,13 @@ export default function SalesPage() {
                       <td className="font-semibold text-gray-900 whitespace-nowrap">
                         {formatDisplayDate(s.saleDate)}
                       </td>
-                      <td className="font-medium text-blue-600 whitespace-nowrap">
-                        #{s.saleNumber}
+                      <td className="whitespace-nowrap">
+                        <Link
+                          href={`/dashboard/sales/${s.id}`}
+                          className="font-medium text-blue-600 hover:underline"
+                        >
+                          #{s.saleNumber}
+                        </Link>
                       </td>
                       <td className="font-medium text-gray-800">
                         {s.customerName}
@@ -285,12 +291,12 @@ export default function SalesPage() {
                         </span>
                       </td>
                       <td className="text-center whitespace-nowrap">
-                        <button
-                          onClick={() => router.push(`/dashboard/sales/${s.id}`)}
-                          className="text-xs font-medium text-blue-600 hover:underline"
+                        <Link
+                          href={`/dashboard/sales/${s.id}`}
+                          className="btn-secondary text-xs px-2.5 py-1"
                         >
                           View
-                        </button>
+                        </Link>
                       </td>
                     </tr>
                   );

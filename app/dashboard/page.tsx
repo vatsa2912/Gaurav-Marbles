@@ -518,14 +518,12 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <button
-              onClick={() => {
-                window.location.href = "/dashboard/sales";
-              }}
+            <Link
+              href="/dashboard/sales"
               className="btn-secondary"
             >
               View All
-            </button>
+            </Link>
           </div>
 
           {recentSales.length === 0 ? (
@@ -541,14 +539,21 @@ export default function DashboardPage() {
                     <th>Date</th>
                     <th>Customer</th>
                     <th>Total Amount</th>
-                    <th>Action</th>
+                    <th className="text-center">Action</th>
                   </tr>
                 </thead>
 
                 <tbody>
                   {recentSales.map((sale) => (
                     <tr key={sale.id}>
-                      <td>#{sale.saleNumber}</td>
+                      <td>
+                        <Link
+                          href={`/dashboard/sales/${sale.id}`}
+                          className="font-semibold text-blue-600 hover:underline"
+                        >
+                          #{sale.saleNumber}
+                        </Link>
+                      </td>
 
                       <td>
                         {formatDisplayDate(sale.saleDate)}
@@ -566,16 +571,13 @@ export default function DashboardPage() {
                         )}
                       </td>
 
-                      <td>
-                        <button
-                          onClick={() => {
-                            window.location.href =
-                              `/dashboard/sales/${sale.id}`;
-                          }}
-                          className="btn-ghost"
+                      <td className="text-center">
+                        <Link
+                          href={`/dashboard/sales/${sale.id}`}
+                          className="btn-secondary text-xs px-2.5 py-1"
                         >
                           View
-                        </button>
+                        </Link>
                       </td>
                     </tr>
                   ))}
@@ -598,14 +600,12 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <button
-              onClick={() => {
-                window.location.href = "/dashboard/purchases";
-              }}
+            <Link
+              href="/dashboard/purchases"
               className="btn-secondary"
             >
               View All
-            </button>
+            </Link>
           </div>
 
           {recentPurchases.length === 0 ? (
@@ -622,14 +622,21 @@ export default function DashboardPage() {
                     <th>Supplier</th>
                     <th>Items</th>
                     <th>Total Amount</th>
-                    <th>Action</th>
+                    <th className="text-center">Action</th>
                   </tr>
                 </thead>
 
                 <tbody>
                   {recentPurchases.map((purchase) => (
                     <tr key={purchase.id}>
-                      <td>#{purchase.purchaseNumber}</td>
+                      <td>
+                        <Link
+                          href={`/dashboard/purchases/${purchase.id}`}
+                          className="font-semibold text-purple-600 hover:underline"
+                        >
+                          #{purchase.purchaseNumber}
+                        </Link>
+                      </td>
 
                       <td>
                         {formatDisplayDate(purchase.purchaseDate)}
@@ -649,16 +656,13 @@ export default function DashboardPage() {
                         )}
                       </td>
 
-                      <td>
-                        <button
-                          onClick={() => {
-                            window.location.href =
-                              `/dashboard/purchases/${purchase.id}`;
-                          }}
-                          className="btn-ghost"
+                      <td className="text-center">
+                        <Link
+                          href={`/dashboard/purchases/${purchase.id}`}
+                          className="btn-secondary text-xs px-2.5 py-1"
                         >
                           View
-                        </button>
+                        </Link>
                       </td>
                     </tr>
                   ))}
@@ -681,14 +685,12 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <button
-              onClick={() => {
-                window.location.href = "/dashboard/products";
-              }}
+            <Link
+              href="/dashboard/products"
               className="btn-secondary"
             >
               View Inventory
-            </button>
+            </Link>
           </div>
 
           {lowStockProducts.length === 0 ? (
@@ -704,6 +706,7 @@ export default function DashboardPage() {
                     <th>Current Stock</th>
                     <th>Minimum Stock</th>
                     <th>Status</th>
+                    <th className="text-center">Action</th>
                   </tr>
                 </thead>
 
@@ -711,7 +714,12 @@ export default function DashboardPage() {
                   {lowStockProducts.map((product) => (
                     <tr key={product.id}>
                       <td className="font-medium">
-                        {product.name}
+                        <Link
+                          href={`/dashboard/products/${product.id}`}
+                          className="text-blue-600 hover:underline font-semibold"
+                        >
+                          {product.name}
+                        </Link>
                       </td>
 
                       <td>
@@ -732,6 +740,15 @@ export default function DashboardPage() {
                             Low Stock
                           </span>
                         )}
+                      </td>
+
+                      <td className="text-center">
+                        <Link
+                          href={`/dashboard/products/${product.id}`}
+                          className="btn-secondary text-xs px-2.5 py-1"
+                        >
+                          View
+                        </Link>
                       </td>
                     </tr>
                   ))}

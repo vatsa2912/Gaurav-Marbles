@@ -446,7 +446,14 @@ export default function ProductsPage() {
 
                   return (
                     <tr key={product.id}>
-                      <td className="font-medium text-left">{product.name}</td>
+                      <td className="font-medium text-left">
+                        <Link
+                          href={`/dashboard/products/${product.id}`}
+                          className="text-gray-900 hover:text-blue-600 hover:underline font-semibold"
+                        >
+                          {product.name}
+                        </Link>
+                      </td>
                       {showSizeColumn && (
                         <td className="text-center">
                           {product.size || <span className="text-muted">—</span>}
@@ -516,12 +523,12 @@ export default function ProductsPage() {
                       </td>
                       <td className="text-center">
                         <div className="flex items-center justify-center gap-3">
-                          <button
-                            onClick={() => router.push(`/dashboard/products/${product.id}`)}
+                          <Link
+                            href={`/dashboard/products/${product.id}`}
                             className="text-sm font-medium text-emerald-600 hover:underline"
                           >
                             View
-                          </button>
+                          </Link>
                           <button
                             onClick={() => router.push(`/dashboard/products/edit/${product.id}`)}
                             className="text-sm font-medium text-blue-600 hover:underline"

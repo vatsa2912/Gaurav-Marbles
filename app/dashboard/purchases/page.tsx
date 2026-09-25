@@ -21,6 +21,7 @@ import {
   extractTransactionDate,
 } from "@/lib/dateUtils";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type PurchaseItem = {
   productId?: string;
@@ -342,8 +343,13 @@ export default function PurchasesPage() {
                       <td className="font-semibold text-gray-900 whitespace-nowrap">
                         {formatDisplayDate(p.purchaseDate)}
                       </td>
-                      <td className="font-mono text-xs font-bold text-blue-700 whitespace-nowrap">
-                        {p.supplierInvoice || `#${p.purchaseNumber}`}
+                      <td className="whitespace-nowrap">
+                        <Link
+                          href={`/dashboard/purchases/${p.id}`}
+                          className="font-mono text-xs font-bold text-blue-700 hover:underline"
+                        >
+                          {p.supplierInvoice || `#${p.purchaseNumber}`}
+                        </Link>
                       </td>
                       <td className="text-gray-800 font-medium">
                         {p.supplierName}
@@ -371,12 +377,12 @@ export default function PurchasesPage() {
                       </td>
                       <td className="text-center whitespace-nowrap">
                         <div className="flex justify-center gap-3">
-                          <button
-                            onClick={() => router.push(`/dashboard/purchases/${p.id}`)}
+                          <Link
+                            href={`/dashboard/purchases/${p.id}`}
                             className="text-xs font-medium text-blue-600 hover:underline"
                           >
                             View
-                          </button>
+                          </Link>
                           <button
                             onClick={() => router.push(`/dashboard/purchases/edit/${p.id}`)}
                             className="text-xs font-medium text-blue-600 hover:underline"
