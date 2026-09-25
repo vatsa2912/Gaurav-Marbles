@@ -200,6 +200,35 @@ export default function ProductDetailPage({
     };
   }, [id]);
 
+  // ALL Hooks must be called unconditionally above all early returns
+  const sortedPurchases = useMemo(() => {
+    return [...purchaseHistory].sort((a, b) => {
+      const dateDiff =
+        purchaseSort === "newest"
+          ? compareDatesDesc(a.purchaseDate, b.purchaseDate)
+          : compareDatesAsc(a.purchaseDate, b.purchaseDate);
+      if (dateDiff !== 0) return dateDiff;
+      // Secondary stable sort for same-date purchases
+      const invA = String(a.supplierInvoice || a.purchaseNumber || a.id);
+      const invB = String(b.supplierInvoice || b.purchaseNumber || b.id);
+      return purchaseSort === "newest" ? invB.localeCompare(invA) : invA.localeCompare(invB);
+    });
+  }, [purchaseHistory, purchaseSort]);
+
+  const sortedSales = useMemo(() => {
+    return [...saleHistory].sort((a, b) => {
+      const dateDiff =
+        saleSort === "newest"
+          ? compareDatesDesc(a.saleDate, b.saleDate)
+          : compareDatesAsc(a.saleDate, b.saleDate);
+      if (dateDiff !== 0) return dateDiff;
+      // Secondary stable sort for same-date sales
+      const invA = String(a.invoiceNumber || a.saleNumber || a.id);
+      const invB = String(b.invoiceNumber || b.saleNumber || b.id);
+      return saleSort === "newest" ? invB.localeCompare(invA) : invA.localeCompare(invB);
+    });
+  }, [saleHistory, saleSort]);
+
   if (loading) {
     return (
       <main className="page-main">
@@ -239,22 +268,6 @@ export default function ProductDetailPage({
     0
   );
   const weightedAvgCost = effectiveStock > 0 ? totalLotValuation / effectiveStock : product.purchasePrice;
-
-  const sortedPurchases = useMemo(() => {
-    return [...purchaseHistory].sort((a, b) =>
-      purchaseSort === "newest"
-        ? compareDatesDesc(a.purchaseDate, b.purchaseDate)
-        : compareDatesAsc(a.purchaseDate, b.purchaseDate)
-    );
-  }, [purchaseHistory, purchaseSort]);
-
-  const sortedSales = useMemo(() => {
-    return [...saleHistory].sort((a, b) =>
-      saleSort === "newest"
-        ? compareDatesDesc(a.saleDate, b.saleDate)
-        : compareDatesAsc(a.saleDate, b.saleDate)
-    );
-  }, [saleHistory, saleSort]);
 
   const minStock = Number(product.minimumStock) || 0;
   const isOutOfStock = effectiveStock <= 0;
