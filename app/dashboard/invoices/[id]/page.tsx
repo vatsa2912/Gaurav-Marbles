@@ -15,6 +15,9 @@ import {
   confirmInvoiceAndDeductStock,
 } from "@/lib/invoiceService";
 import TaxInvoiceDocument from "@/components/invoices/TaxInvoiceDocument";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { useToast } from "@/components/ui/ToastContext";
+import { ArrowLeft, Printer, Download, Trash2, CheckCircle2, PackageCheck } from "lucide-react";
 
 export default function InvoiceDetailsPage({
   params,
@@ -23,6 +26,7 @@ export default function InvoiceDetailsPage({
 }) {
   const resolvedParams = use(params);
   const router = useRouter();
+  const { showToast } = useToast();
 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [settings, setSettings] = useState<ShopSettings>(DEFAULT_SHOP_SETTINGS);
@@ -31,6 +35,10 @@ export default function InvoiceDetailsPage({
   const [actionLoading, setActionLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [refreshCount, setRefreshCount] = useState(0);
+
+  // Confirmation modals
+  const [showDeductModal, setShowDeductModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -69,47 +77,42 @@ export default function InvoiceDetailsPage({
   };
 
   const handleDownloadPdf = () => {
-    // In modern browsers, window.print() brings up the print dialog with 'Save as PDF'
     window.print();
   };
 
-  const handleConfirmAndDeductStock = async () => {
+  const handleExecuteDeductStock = async () => {
     if (!invoice) return;
-
-    const confirmed = window.confirm(
-      `Confirm Invoice #${invoice.invoiceNumber} and deduct inventory stock?\n\nThis will deduct stock for all inventory items using FIFO lot allocation. This action cannot be reversed.`
-    );
-    if (!confirmed) return;
 
     try {
       setActionLoading(true);
       setError("");
       const res = await confirmInvoiceAndDeductStock(invoice.id);
+      showToast(res.message || "Stock deducted successfully.", "success");
       setSuccessMsg(res.message);
-      // Reload updated invoice
+      setShowDeductModal(false);
       setRefreshCount((c) => c + 1);
     } catch (err) {
       console.error("Stock deduction error:", err);
-      setError(err instanceof Error ? err.message : "Failed to deduct inventory stock.");
+      const errMsg = err instanceof Error ? err.message : "Failed to deduct inventory stock.";
+      showToast(errMsg, "error");
+      setError(errMsg);
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleDelete = async () => {
+  const handleExecuteDelete = async () => {
     if (!invoice) return;
-    const confirmed = window.confirm(
-      `Are you sure you want to delete Invoice #${invoice.invoiceNumber}?`
-    );
-    if (!confirmed) return;
 
     try {
       setActionLoading(true);
       await deleteInvoice(invoice.id);
+      showToast("Invoice deleted successfully.", "success");
+      setShowDeleteModal(false);
       router.push("/dashboard/invoices");
     } catch (err) {
       console.error("Delete error:", err);
-      alert("Could not delete invoice.");
+      showToast("Could not delete invoice.", "error");
       setActionLoading(false);
     }
   };
@@ -181,17 +184,19 @@ export default function InvoiceDetailsPage({
             {/* Stock deduction status indicator & action */}
             {isDeducted ? (
               <span className="text-xs px-2.5 py-1 bg-green-50 text-green-700 rounded-md font-medium border border-green-200 flex items-center gap-1">
-                <span>✓</span> Stock Deducted
+                <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                <span>Stock Deducted</span>
               </span>
             ) : (
               <button
                 type="button"
-                onClick={handleConfirmAndDeductStock}
+                onClick={() => setShowDeductModal(true)}
                 disabled={actionLoading}
                 className="btn-secondary text-xs text-amber-800 border-amber-300 bg-amber-50 hover:bg-amber-100 flex items-center gap-1.5 font-semibold"
                 title="Deduct stock from inventory using FIFO lots"
               >
-                <span>📦</span> Confirm &amp; Deduct Stock
+                <PackageCheck className="w-3.5 h-3.5 text-amber-700" />
+                <span>Confirm &amp; Deduct Stock</span>
               </button>
             )}
 
@@ -201,7 +206,8 @@ export default function InvoiceDetailsPage({
               onClick={handlePrint}
               className="btn-primary text-xs flex items-center gap-1.5"
             >
-              <span>🖨️</span> Print Invoice
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print Invoice</span>
             </button>
 
             {/* Download PDF button */}
@@ -211,17 +217,19 @@ export default function InvoiceDetailsPage({
               className="btn-secondary text-xs flex items-center gap-1.5"
               title="Print to PDF"
             >
-              <span>📥</span> Download PDF
+              <Download className="w-3.5 h-3.5" />
+              <span>Download PDF</span>
             </button>
 
             {/* Delete button */}
             <button
               type="button"
-              onClick={handleDelete}
+              onClick={() => setShowDeleteModal(true)}
               disabled={actionLoading}
-              className="btn-ghost text-xs text-red-600 hover:text-red-800 px-2 py-1"
+              className="btn-ghost text-xs text-red-600 hover:text-red-800 flex items-center gap-1 px-2.5 py-1"
             >
-              Delete
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete</span>
             </button>
           </div>
         </div>
@@ -258,6 +266,34 @@ export default function InvoiceDetailsPage({
           settings={settings}
         />
       </div>
+
+      {/* Modal: Confirm Stock Deduction */}
+      <ConfirmModal
+        isOpen={showDeductModal}
+        title="Deduct Stock from Inventory?"
+        message={`Are you sure you want to confirm Invoice #${invoice.invoiceNumber} and deduct inventory stock? This will allocate items from active FIFO purchase lots and decrease current on-hand stock counts. This operation cannot be undone.`}
+        confirmLabel="Confirm & Deduct Stock"
+        variant="warning"
+        isLoading={actionLoading}
+        onConfirm={handleExecuteDeductStock}
+        onCancel={() => {
+          if (!actionLoading) setShowDeductModal(false);
+        }}
+      />
+
+      {/* Modal: Confirm Delete Invoice */}
+      <ConfirmModal
+        isOpen={showDeleteModal}
+        title="Delete Tax Invoice"
+        message={`Are you sure you want to permanently delete Invoice #${invoice.invoiceNumber}? This will remove the invoice record from the system.`}
+        confirmLabel="Delete Invoice"
+        variant="danger"
+        isLoading={actionLoading}
+        onConfirm={handleExecuteDelete}
+        onCancel={() => {
+          if (!actionLoading) setShowDeleteModal(false);
+        }}
+      />
     </main>
   );
 }

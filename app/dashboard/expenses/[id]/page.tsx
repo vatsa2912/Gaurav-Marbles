@@ -6,6 +6,8 @@ import Link from "next/link";
 import { doc, getDoc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { formatDisplayDate } from "@/lib/dateUtils";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { useToast } from "@/components/ui/ToastContext";
 
 type Expense = {
   id: string;
@@ -26,11 +28,13 @@ export default function ExpenseDetailPage({
   const resolvedParams = use(params);
   const id = resolvedParams.id;
   const router = useRouter();
+  const { showToast } = useToast();
 
   const [expense, setExpense] = useState<Expense | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -82,20 +86,18 @@ export default function ExpenseDetailPage({
     };
   }, [id]);
 
-  const handleDelete = async () => {
+  const handleConfirmDelete = async () => {
     if (!expense) return;
-    const confirmed = window.confirm(
-      `Are you sure you want to delete the expense "${expense.title}" of ₹${expense.amount.toLocaleString("en-IN")}?`
-    );
-    if (!confirmed) return;
 
     try {
       setDeleting(true);
       await deleteDoc(doc(db, "expenses", id));
+      showToast("Expense deleted successfully.", "success");
+      setDeleteModalOpen(false);
       router.push("/dashboard/expenses");
     } catch (err) {
       console.error("Error deleting expense:", err);
-      alert(err instanceof Error ? err.message : "Could not delete expense.");
+      showToast(err instanceof Error ? err.message : "Could not delete expense.", "error");
       setDeleting(false);
     }
   };
@@ -188,12 +190,12 @@ export default function ExpenseDetailPage({
             </Link>
             <button
               type="button"
-              onClick={handleDelete}
+              onClick={() => setDeleteModalOpen(true)}
               disabled={deleting}
               className="btn-primary text-sm bg-red-600 hover:bg-red-700"
               style={{ background: "#dc2626" }}
             >
-              {deleting ? "Deleting..." : "Delete Expense"}
+              Delete Expense
             </button>
           </div>
         </div>
@@ -268,6 +270,24 @@ export default function ExpenseDetailPage({
           </div>
         </div>
       </div>
+
+      {/* Confirm Delete Expense Modal */}
+      <ConfirmModal
+        isOpen={deleteModalOpen}
+        title="Delete Expense Record"
+        message={
+          expense
+            ? `Are you sure you want to delete the expense "${expense.title}" of ₹${expense.amount.toLocaleString("en-IN")}? This transaction will be permanently removed.`
+            : "Are you sure you want to delete this expense record?"
+        }
+        confirmLabel="Delete Expense"
+        variant="danger"
+        isLoading={deleting}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => {
+          if (!deleting) setDeleteModalOpen(false);
+        }}
+      />
     </main>
   );
 }

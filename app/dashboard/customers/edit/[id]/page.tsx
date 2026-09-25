@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { useToast } from "@/components/ui/ToastContext";
 
 export default function EditCustomerPage() {
   const params = useParams();
   const router = useRouter();
+  const { showToast } = useToast();
 
   const customerId = params.id as string;
 
@@ -25,7 +27,7 @@ export default function EditCustomerPage() {
         const customerSnap = await getDoc(customerRef);
 
         if (!customerSnap.exists()) {
-          alert("Customer not found.");
+          showToast("Customer not found.", "error");
           router.push("/dashboard/customers");
           return;
         }
@@ -37,7 +39,7 @@ export default function EditCustomerPage() {
         setAddress(data.address || "");
       } catch (error) {
         console.error("Error loading customer:", error);
-        alert("Could not load customer.");
+        showToast("Could not load customer.", "error");
       } finally {
         setLoading(false);
       }
@@ -46,13 +48,13 @@ export default function EditCustomerPage() {
     if (customerId) {
       loadCustomer();
     }
-  }, [customerId, router]);
+  }, [customerId, router, showToast]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!name.trim()) {
-      alert("Customer name is required.");
+      showToast("Customer name is required.", "error");
       return;
     }
 
@@ -67,10 +69,11 @@ export default function EditCustomerPage() {
         address: address.trim(),
       });
 
+      showToast("Customer details updated successfully.", "success");
       router.push(`/dashboard/customers/${customerId}`);
     } catch (error) {
       console.error("Error updating customer:", error);
-      alert("Could not update customer.");
+      showToast("Could not update customer.", "error");
     } finally {
       setSaving(false);
     }

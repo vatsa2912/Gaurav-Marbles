@@ -16,6 +16,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { formatDisplayDate, extractTransactionDate, getTodayDateString } from "@/lib/dateUtils";
+import { useToast } from "@/components/ui/ToastContext";
 
 type DailySale = {
   id: string;
@@ -69,6 +70,7 @@ type DailyPayment = {
 
 export default function DailyMaintainPage() {
   const router = useRouter();
+  const { showToast } = useToast();
   const [selectedDate, setSelectedDate] = useState(() => {
     return new Date().toISOString().split("T")[0];
   });
@@ -237,10 +239,10 @@ export default function DailyMaintainPage() {
         updatedAt: serverTimestamp(),
       });
       setOpeningCashSaved(true);
-      alert(`Opening cash for ${selectedDate} saved: ₹${num.toLocaleString("en-IN")}`);
+      showToast(`Opening cash for ${selectedDate} saved: ₹${num.toLocaleString("en-IN")}`, "success");
     } catch (err) {
       console.error("Error saving opening cash:", err);
-      alert("Failed to save opening cash.");
+      showToast("Failed to save opening cash.", "error");
     } finally {
       setSavingCash(false);
     }
@@ -250,12 +252,12 @@ export default function DailyMaintainPage() {
   const handleQuickAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!expTitle.trim()) {
-      alert("Expense title is required.");
+      showToast("Expense title is required.", "error");
       return;
     }
     const num = Number(expAmount);
     if (!expAmount || isNaN(num) || num <= 0) {
-      alert("Please enter a valid expense amount greater than 0.");
+      showToast("Please enter a valid expense amount greater than 0.", "error");
       return;
     }
 
@@ -285,6 +287,7 @@ export default function DailyMaintainPage() {
         },
       ]);
 
+      showToast("Expense added successfully.", "success");
       setExpTitle("");
       setExpAmount("");
       setExpNotes("");
@@ -292,7 +295,7 @@ export default function DailyMaintainPage() {
       setExpMethod("Cash");
     } catch (err) {
       console.error("Error adding expense:", err);
-      alert("Could not add expense.");
+      showToast("Could not add expense.", "error");
     } finally {
       setAddingExp(false);
     }

@@ -6,10 +6,21 @@ import { addDoc, collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { generateLotId } from "@/lib/stockLots";
 import { useRouter } from "next/navigation";
-
+import { useToast } from "@/components/ui/ToastContext";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import {
+  ArrowLeft,
+  Save,
+  Package,
+  Layers,
+  IndianRupee,
+  ShieldAlert,
+  Info,
+} from "lucide-react";
 
 export default function AddProductPage() {
   const router = useRouter();
+  const { showToast } = useToast();
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Tiles");
@@ -28,13 +39,18 @@ export default function AddProductPage() {
   const [model, setModel] = useState("");
   const [material, setMaterial] = useState("");
   const [warranty, setWarranty] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
   const [marblePieces, setMarblePieces] = useState("");
   const [lotNumber, setLotNumber] = useState("");
   const [graniteQuantity, setGraniteQuantity] = useState("");
   const [granitePieces, setGranitePieces] = useState("");
   const [graniteLotNumber, setGraniteLotNumber] = useState("");
+
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  // Duplicate product confirmation modal
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [duplicateId, setDuplicateId] = useState<string | null>(null);
 
   const handleCategoryChange = (newCategory: string) => {
     setCategory(newCategory);
@@ -44,9 +60,7 @@ export default function AddProductPage() {
       setUnit("box");
     } else if (newCategory === "Marble" || newCategory === "Granite") {
       setUnit("sqft");
-    } else if (
-      ["Sanitary", "Taps", "Wash Basin", "Sink"].includes(newCategory)
-    ) {
+    } else if (["Sanitary", "Taps", "Wash Basin", "Sink"].includes(newCategory)) {
       setUnit("piece");
     } else if (["Chemicals", "Adhesives"].includes(newCategory)) {
       setUnit("piece");
@@ -81,13 +95,84 @@ export default function AddProductPage() {
     }
   };
 
+  const executeProductCreation = async () => {
+    const openingStock = Number(stock) || 0;
+    const pPrice = Number(purchasePrice) || 0;
+    const sPrice = Number(sellingPrice) || 0;
+
+    const openingLots =
+      openingStock > 0
+        ? [
+            {
+              lotId: generateLotId(),
+              purchasePrice: pPrice,
+              quantity: openingStock,
+              remainingQuantity: openingStock,
+              purchasedAt: new Date().toISOString().split("T")[0],
+            },
+          ]
+        : [];
+
+    await addDoc(collection(db, "products"), {
+      name: name.trim(),
+      category,
+      unit: category === "Marble" && marbleType === "Cut Size" ? "piece" : unit,
+
+      size:
+        category === "Tiles"
+          ? size
+          : category === "Marble" && marbleType === "Cut Size"
+          ? marbleCutSize
+          : "",
+      piecesPerBox: category === "Tiles" && piecesPerBox ? Number(piecesPerBox) : null,
+      marbleType: category === "Marble" ? marbleType : "",
+      marbleQuantity:
+        category === "Marble" && marbleType !== "Cut Size" && marbleQuantity
+          ? Number(marbleQuantity)
+          : 0,
+      marblePieces: category === "Marble" && marblePieces ? Number(marblePieces) : 0,
+      lotNumber: category === "Marble" && marbleType !== "Cut Size" ? lotNumber.trim() : "",
+      graniteQuantity:
+        category === "Granite" && graniteQuantity ? Number(graniteQuantity) : 0,
+      granitePieces: category === "Granite" && granitePieces ? Number(granitePieces) : 0,
+      graniteLotNumber: category === "Granite" ? graniteLotNumber.trim() : "",
+      type: "",
+      model: ["Sanitary", "Taps", "Wash Basin", "Sink"].includes(category)
+        ? model.trim()
+        : "",
+      material: ["Sanitary", "Taps", "Wash Basin", "Sink"].includes(category)
+        ? material.trim()
+        : "",
+      warranty: ["Sanitary", "Taps", "Wash Basin", "Sink"].includes(category)
+        ? warranty.trim()
+        : "",
+
+      purchasePrice: pPrice,
+      sellingPrice: sPrice,
+
+      gstRate: Number(gstRate) || 0,
+      stock: openingStock,
+      estimatedStock:
+        category === "Granite" || (category === "Marble" && marbleType !== "Cut Size")
+          ? Number(estimatedStock || 0)
+          : 0,
+      minimumStock: Number(minimumStock) || 0,
+      stockLots: openingLots,
+
+      createdAt: new Date(),
+    });
+
+    showToast(`Product "${name.trim()}" created successfully`, "success");
+    router.push("/dashboard/products");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     setError("");
 
     if (!name.trim()) {
       setError("Please enter product name.");
+      showToast("Please enter product name", "error");
       return;
     }
 
@@ -98,137 +183,95 @@ export default function AddProductPage() {
       const existingSnap = await getDocs(collection(db, "products"));
       const duplicate = existingSnap.docs.find((d) => {
         const data = d.data();
-        const sameName = (data.name || "").trim().toLowerCase() === name.trim().toLowerCase();
-        const sameCategory = (data.category || "").trim().toLowerCase() === category.trim().toLowerCase();
+        const sameName =
+          (data.name || "").trim().toLowerCase() === name.trim().toLowerCase();
+        const sameCategory =
+          (data.category || "").trim().toLowerCase() === category.trim().toLowerCase();
         return sameName && sameCategory;
       });
 
       if (duplicate) {
-        const confirmed = window.confirm(
-          `A product named "${name.trim()}" already exists in category "${category}".\n\n` +
-          `• If you are purchasing new stock of this product at the same or different price, please use "Add Purchase" instead of creating a duplicate product.\n\n` +
-          `• Click CANCEL to switch to Add Purchase for this product.\n` +
-          `• Click OK only if you genuinely intend to create a separate distinct product.`
-        );
-        if (!confirmed) {
-          router.push(`/dashboard/purchases/add?productId=${duplicate.id}`);
-          return;
-        }
+        setDuplicateId(duplicate.id);
+        setDuplicateModalOpen(true);
+        setSaving(false);
+        return;
       }
 
-      const openingStock = Number(stock) || 0;
-      const pPrice = Number(purchasePrice) || 0;
-      const sPrice = Number(sellingPrice) || 0;
-
-      const openingLots =
-        openingStock > 0
-          ? [
-            {
-              lotId: generateLotId(),
-              purchasePrice: pPrice,
-              quantity: openingStock,
-              remainingQuantity: openingStock,
-              purchasedAt: new Date().toISOString().split("T")[0],
-            },
-          ]
-          : [];
-
-      await addDoc(collection(db, "products"), {
-        name: name.trim(),
-        category,
-        unit: category === "Marble" && marbleType === "Cut Size" ? "piece" : unit,
-
-        size: category === "Tiles" ? size : category === "Marble" && marbleType === "Cut Size" ? marbleCutSize : "",
-        piecesPerBox: category === "Tiles" && piecesPerBox ? Number(piecesPerBox) : null,
-        marbleType: category === "Marble" ? marbleType : "",
-        marbleQuantity: category === "Marble" && marbleType !== "Cut Size" && marbleQuantity ? Number(marbleQuantity) : 0,
-        marblePieces: category === "Marble" && marblePieces ? Number(marblePieces) : 0,
-        lotNumber: category === "Marble" && marbleType !== "Cut Size" ? lotNumber.trim() : "",
-        graniteQuantity: category === "Granite" && graniteQuantity ? Number(graniteQuantity) : 0,
-        granitePieces: category === "Granite" && granitePieces ? Number(granitePieces) : 0,
-        graniteLotNumber: category === "Granite" ? graniteLotNumber.trim() : "",
-        type: "",
-        model: ["Sanitary", "Taps", "Wash Basin", "Sink"].includes(category) ? model.trim() : "",
-        material: ["Sanitary", "Taps", "Wash Basin", "Sink"].includes(category) ? material.trim() : "",
-        warranty: ["Sanitary", "Taps", "Wash Basin", "Sink"].includes(category) ? warranty.trim() : "",
-
-        purchasePrice: pPrice,
-        sellingPrice: sPrice,
-
-        gstRate: Number(gstRate) || 0,
-        stock: openingStock,
-        estimatedStock:
-          category === "Granite" || (category === "Marble" && marbleType !== "Cut Size")
-            ? Number(estimatedStock || 0)
-            : 0,
-        minimumStock: Number(minimumStock) || 0,
-        stockLots: openingLots,
-
-        createdAt: new Date(),
-      });
-
-      router.push("/dashboard/products");
-    } catch (error) {
-      console.error(error);
+      await executeProductCreation();
+    } catch (err) {
+      console.error(err);
       setError("Could not save product.");
-    } finally {
+      showToast("Could not save product. Please try again.", "error");
       setSaving(false);
     }
   };
 
   return (
-    <main className="page-main">
-      <header className="site-header">
-        <h1 className="text-xl">Gaurav Marbles</h1>
-
-        <p className="text-muted">Add Product</p>
-      </header>
-
-      <div className="page-content-narrow">
-        <div className="mb-6">
-          <button
-            onClick={() => router.push("/dashboard/products")}
-            className="btn-ghost"
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
+        <div className="space-y-1">
+          <Link
+            href="/dashboard/products"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 transition mb-1"
           >
-            ← Back to Products
-          </button>
-
-          <h2 className="mt-4 text-2xl">Add New Product</h2>
-          <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 flex items-center justify-between">
-            <span>
-              ℹ️ <strong>Product Master:</strong> You only need to enter Product Name and Category to register a product into your master catalog. Stock, Purchase Price, and Selling Price are completely optional — they can be left at 0 and added later via{" "}
-              <Link href="/dashboard/purchases/add" className="font-semibold underline hover:text-blue-900">
-                Add Purchase
-              </Link>.
-            </span>
-          </div>
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Back to Products</span>
+          </Link>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Add New Product</h1>
+          <p className="text-xs text-slate-500">
+            Define item master parameters, technical attributes, and optional initial stock.
+          </p>
         </div>
+      </div>
 
-        <form onSubmit={handleSubmit} className="card">
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            {/* Product Name */}
-            <div className="form-field md:col-span-2">
-              <label htmlFor="name">Product Name *</label>
+      {/* Info Callout */}
+      <div className="p-4 bg-blue-50/80 border border-blue-200 rounded-2xl text-xs text-blue-900 flex items-start gap-3">
+        <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+        <div className="leading-relaxed">
+          <strong>Master Catalog Registration:</strong> Only <strong>Product Name</strong> and{" "}
+          <strong>Category</strong> are strictly required. Stock quantities and batch purchase prices
+          can be left empty or at 0 and replenished anytime using{" "}
+          <Link href="/dashboard/purchases/add" className="font-semibold underline hover:text-blue-950">
+            Add Purchase
+          </Link>.
+        </div>
+      </div>
 
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Section 1: Basic Information */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-5">
+          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+            <Package className="w-4 h-4 text-slate-700" />
+            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+              1. Basic Information
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                Product Name *
+              </label>
               <input
-                id="name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Example: Kajaria Royal"
+                placeholder="e.g. Kajaria Royal Statuario 2x4"
                 required
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
               />
             </div>
 
-            {/* Category */}
-            <div className="form-field">
-              <label htmlFor="category">Category *</label>
-
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                Category *
+              </label>
               <select
-                id="category"
                 value={category}
                 onChange={(e) => handleCategoryChange(e.target.value)}
                 required
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white"
               >
                 <option value="Tiles">Tiles</option>
                 <option value="Marble">Marble</option>
@@ -244,15 +287,18 @@ export default function AddProductPage() {
               </select>
             </div>
 
-            {/* Unit */}
-            <div className="form-field">
-              <label htmlFor="unit">Unit *</label>
-
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                Inventory Measurement Unit *
+              </label>
               <select
-                id="unit"
                 value={unit}
                 disabled={category === "Tiles" || category === "Marble" || category === "Granite"}
-                className={category === "Tiles" || category === "Marble" || category === "Granite" ? "bg-gray-100 cursor-not-allowed" : ""}
+                className={`w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition ${
+                  category === "Tiles" || category === "Marble" || category === "Granite"
+                    ? "bg-slate-100 text-slate-500 cursor-not-allowed"
+                    : "bg-white"
+                }`}
                 onChange={(e) => setUnit(e.target.value)}
               >
                 {category === "Tiles" ? (
@@ -279,17 +325,29 @@ export default function AddProductPage() {
                 )}
               </select>
             </div>
+          </div>
+        </div>
 
-            {/* Category-specific fields */}
+        {/* Section 2: Technical Specifications */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-5">
+          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+            <Layers className="w-4 h-4 text-slate-700" />
+            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+              2. Technical Specifications ({category})
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {category === "Tiles" && (
               <>
-                <div className="form-field">
-                  <label htmlFor="size">Size</label>
-
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                    Tile Dimension / Size
+                  </label>
                   <select
-                    id="size"
                     value={size}
                     onChange={(e) => setSize(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white"
                   >
                     <option value="">Select Size</option>
                     <option value="12x18">12x18</option>
@@ -299,58 +357,17 @@ export default function AddProductPage() {
                   </select>
                 </div>
 
-                <div className="form-field">
-                  <label htmlFor="piecesPerBox">Pieces per Box</label>
-
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                    Pieces Per Box
+                  </label>
                   <input
-                    id="piecesPerBox"
                     type="number"
                     min="1"
                     value={piecesPerBox}
                     onChange={(e) => setPiecesPerBox(e.target.value)}
-                    placeholder="e.g. 5, 6, 8 (for sqft calculation)"
-                  />
-                </div>
-
-                {/* Purchase Price */}
-                <div className="form-field">
-                  <label htmlFor="purchasePrice">Purchase Price (per box, optional)</label>
-
-                  <input
-                    id="purchasePrice"
-                    type="number"
-                    min="0"
-                    value={purchasePrice}
-                    onChange={(e) => setPurchasePrice(e.target.value)}
-                    placeholder="0"
-                  />
-                </div>
-
-                {/* Selling Price */}
-                <div className="form-field">
-                  <label htmlFor="sellingPrice">Selling Price (per box, optional)</label>
-
-                  <input
-                    id="sellingPrice"
-                    type="number"
-                    min="0"
-                    value={sellingPrice}
-                    onChange={(e) => setSellingPrice(e.target.value)}
-                    placeholder="0"
-                  />
-                </div>
-
-                {/* Opening Stock */}
-                <div className="form-field">
-                  <label htmlFor="stock">Opening Stock in boxes (optional)</label>
-
-                  <input
-                    id="stock"
-                    type="number"
-                    min="0"
-                    value={stock}
-                    onChange={(e) => setStock(e.target.value)}
-                    placeholder="0"
+                    placeholder="e.g. 5, 6, 8"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
                   />
                 </div>
               </>
@@ -358,12 +375,11 @@ export default function AddProductPage() {
 
             {category === "Marble" && (
               <>
-                {/* Marble Type */}
-                <div className="form-field">
-                  <label htmlFor="marbleType">Marble Type</label>
-
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                    Marble Form
+                  </label>
                   <select
-                    id="marbleType"
                     value={marbleType}
                     onChange={(e) => {
                       const val = e.target.value;
@@ -374,66 +390,53 @@ export default function AddProductPage() {
                         setUnit("sqft");
                       }
                     }}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white"
                   >
-                    <option value="">Select Type</option>
+                    <option value="">Select Marble Form</option>
                     <option value="Slabs">Slabs</option>
                     <option value="Cut Size">Cut Size</option>
                   </select>
                 </div>
 
                 {marbleType === "Cut Size" ? (
-                  <div className="form-field">
-                    <label htmlFor="marbleCutSize">Cut Size</label>
-
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                      Cut Size Dimensions
+                    </label>
                     <input
-                      id="marbleCutSize"
                       type="text"
                       value={marbleCutSize}
                       onChange={(e) => setMarbleCutSize(e.target.value)}
-                      placeholder="Example: 2x4, 2x2, 3x6"
+                      placeholder="e.g. 2x4, 2x2, 3x6"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
                     />
                   </div>
                 ) : (
                   <>
-                    <div className="form-field">
-                      <label htmlFor="marbleQuantity">
-                        Opening Quantity (sqft, optional)
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                        Number of Pieces (Optional)
                       </label>
-
                       <input
-                        id="marbleQuantity"
-                        type="number"
-                        min="0"
-                        value={marbleQuantity}
-                        onChange={(e) => setMarbleQuantity(e.target.value)}
-                        placeholder="Enter quantity in sqft"
-                      />
-                    </div>
-
-                    {/* Pieces */}
-                    <div className="form-field">
-                      <label htmlFor="marblePieces">Pieces (optional)</label>
-
-                      <input
-                        id="marblePieces"
                         type="number"
                         min="0"
                         value={marblePieces}
                         onChange={(e) => setMarblePieces(e.target.value)}
-                        placeholder="Enter number of pieces"
+                        placeholder="e.g. 12"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
                       />
                     </div>
 
-                    {/* Lot Number */}
-                    <div className="form-field">
-                      <label htmlFor="lotNumber">Lot Number (optional)</label>
-
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                        Lot / Block Number (Optional)
+                      </label>
                       <input
-                        id="lotNumber"
                         type="text"
                         value={lotNumber}
                         onChange={(e) => setLotNumber(e.target.value)}
-                        placeholder="Enter lot number"
+                        placeholder="e.g. LOT-4029"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
                       />
                     </div>
                   </>
@@ -443,50 +446,30 @@ export default function AddProductPage() {
 
             {category === "Granite" && (
               <>
-                {/* Granite Quantity */}
-                <div className="form-field">
-                  <label htmlFor="graniteQuantity">
-                    Quantity {unit === "sqft" ? "(sqft)" : "(pieces)"}
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                    Granite Pieces (Optional)
                   </label>
-
                   <input
-                    id="graniteQuantity"
-                    type="number"
-                    min="0"
-                    value={graniteQuantity}
-                    onChange={(e) => setGraniteQuantity(e.target.value)}
-                    placeholder={
-                      unit === "sqft"
-                        ? "Enter quantity in sqft"
-                        : "Enter quantity in pieces"
-                    }
-                  />
-                </div>
-
-                {/* Granite Pieces */}
-                <div className="form-field">
-                  <label htmlFor="granitePieces">Pieces</label>
-
-                  <input
-                    id="granitePieces"
                     type="number"
                     min="0"
                     value={granitePieces}
                     onChange={(e) => setGranitePieces(e.target.value)}
-                    placeholder="Enter number of pieces"
+                    placeholder="e.g. 8"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
                   />
                 </div>
 
-                {/* Granite Lot Number */}
-                <div className="form-field">
-                  <label htmlFor="graniteLotNumber">Lot Number</label>
-
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                    Granite Lot Number (Optional)
+                  </label>
                   <input
-                    id="graniteLotNumber"
                     type="text"
                     value={graniteLotNumber}
                     onChange={(e) => setGraniteLotNumber(e.target.value)}
-                    placeholder="Enter lot number"
+                    placeholder="e.g. GR-908"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
                   />
                 </div>
               </>
@@ -494,172 +477,233 @@ export default function AddProductPage() {
 
             {["Sanitary", "Taps", "Wash Basin", "Sink"].includes(category) && (
               <>
-                <div className="form-field">
-                  <label htmlFor="model">Model</label>
-
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                    Model Number
+                  </label>
                   <input
-                    id="model"
+                    type="text"
                     value={model}
                     onChange={(e) => setModel(e.target.value)}
-                    placeholder="Example: Model 123"
+                    placeholder="e.g. Coral Wall Hung"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
                   />
                 </div>
 
-                <div className="form-field">
-                  <label htmlFor="material">Material</label>
-
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                    Material / Finish
+                  </label>
                   <input
-                    id="material"
+                    type="text"
                     value={material}
                     onChange={(e) => setMaterial(e.target.value)}
-                    placeholder="Example: Brass"
+                    placeholder="e.g. Ceramic / Stainless 304"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
                   />
                 </div>
 
-                <div className="form-field">
-                  <label htmlFor="warranty">Warranty</label>
-
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                    Warranty Period
+                  </label>
                   <input
-                    id="warranty"
+                    type="text"
                     value={warranty}
                     onChange={(e) => setWarranty(e.target.value)}
-                    placeholder="Example: 5 years"
+                    placeholder="e.g. 5 Years Manufacturer"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
                   />
                 </div>
               </>
             )}
 
-            {/* Non-Tiles: Opening Stock, Estimated Stock (Marble/Granite), Purchase Price, Selling Price */}
-            {category !== "Tiles" && (
-              <>
-                {/* Opening Stock */}
-                <div className="form-field">
-                  <label htmlFor="stock">
-                    {category === "Marble" && marbleType === "Cut Size"
-                      ? "Opening Stock in pieces (optional)"
-                      : category === "Marble" || category === "Granite"
-                      ? "Opening Stock in sqft (optional)"
-                      : `Opening Stock (${unit}, optional)`}
-                  </label>
-
-                  <input
-                    id="stock"
-                    type="number"
-                    min="0"
-                    value={stock}
-                    onChange={(e) => setStock(e.target.value)}
-                    placeholder="0"
-                  />
-                </div>
-
-                {(category === "Granite" || (category === "Marble" && marbleType !== "Cut Size")) && (
-                  <div className="form-field">
-                    <label htmlFor="estimatedStock">
-                      Estimated Stock in sqft (optional)
-                    </label>
-
-                    <input
-                      id="estimatedStock"
-                      type="number"
-                      min="0"
-                      value={estimatedStock}
-                      onChange={(e) => setEstimatedStock(e.target.value)}
-                      placeholder="Enter estimated stock in sqft"
-                    />
-                  </div>
-                )}
-
-                {/* Purchase Price */}
-                <div className="form-field">
-                  <label htmlFor="purchasePrice">
-                    {category === "Marble" && marbleType === "Cut Size"
-                      ? "Purchase Price per piece (optional)"
-                      : category === "Marble" || category === "Granite"
-                      ? "Purchase Price per sqft (optional)"
-                      : `Purchase Price (${unit}, optional)`}
-                  </label>
-
-                  <input
-                    id="purchasePrice"
-                    type="number"
-                    min="0"
-                    value={purchasePrice}
-                    onChange={(e) => setPurchasePrice(e.target.value)}
-                    placeholder="0"
-                  />
-                </div>
-
-                {/* Selling Price */}
-                <div className="form-field">
-                  <label htmlFor="sellingPrice">
-                    {category === "Marble" && marbleType === "Cut Size"
-                      ? "Selling Price per piece (optional)"
-                      : category === "Marble" || category === "Granite"
-                      ? "Selling Price per sqft (optional)"
-                      : `Selling Price (${unit}, optional)`}
-                  </label>
-
-                  <input
-                    id="sellingPrice"
-                    type="number"
-                    min="0"
-                    value={sellingPrice}
-                    onChange={(e) => setSellingPrice(e.target.value)}
-                    placeholder="0"
-                  />
-                </div>
-              </>
+            {["Chemicals", "Adhesives", "Hardware", "Other"].includes(category) && (
+              <div className="sm:col-span-2 text-xs text-slate-500 py-2">
+                Standard SKU item. Enter pricing and stock quantities below.
+              </div>
             )}
+          </div>
+        </div>
 
-            {/* GST */}
-            <div className="form-field">
-              <label htmlFor="gstRate">GST %</label>
+        {/* Section 3: Pricing & Taxation */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-5">
+          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+            <IndianRupee className="w-4 h-4 text-slate-700" />
+            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+              3. Pricing & Taxation
+            </h2>
+          </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                Purchase Price (₹/{unit})
+              </label>
               <input
-                id="gstRate"
+                type="number"
+                min="0"
+                step="any"
+                value={purchasePrice}
+                onChange={(e) => setPurchasePrice(e.target.value)}
+                placeholder="0"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                Selling Price (₹/{unit})
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={sellingPrice}
+                onChange={(e) => setSellingPrice(e.target.value)}
+                placeholder="0"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                Applicable GST Rate (%)
+              </label>
+              <input
                 type="number"
                 min="0"
                 value={gstRate}
                 onChange={(e) => setGstRate(e.target.value)}
+                placeholder="18"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
               />
             </div>
+          </div>
+        </div>
 
-            {/* Minimum Stock */}
-            <div className="form-field">
-              <label htmlFor="minimumStock">Minimum Stock</label>
+        {/* Section 4: Inventory & Stock Thresholds */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-5">
+          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+            <ShieldAlert className="w-4 h-4 text-slate-700" />
+            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+              4. Opening Stock & Reorder Levels
+            </h2>
+          </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                Opening Stock ({unit})
+              </label>
               <input
-                id="minimumStock"
+                type="number"
+                min="0"
+                step="any"
+                value={stock}
+                onChange={(e) => setStock(e.target.value)}
+                placeholder="0"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
+              />
+              <p className="text-[11px] text-slate-400 mt-1">Creates initial batch lot if &gt; 0</p>
+            </div>
+
+            {(category === "Granite" || (category === "Marble" && marbleType !== "Cut Size")) && (
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Estimated Stock (sqft)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={estimatedStock}
+                  onChange={(e) => setEstimatedStock(e.target.value)}
+                  placeholder="0"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                Minimum Stock Alert Level
+              </label>
+              <input
                 type="number"
                 min="0"
                 value={minimumStock}
                 onChange={(e) => setMinimumStock(e.target.value)}
-                placeholder="Example: 10"
+                placeholder="10"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
               />
+              <p className="text-[11px] text-slate-400 mt-1">Triggers dashboard warning</p>
             </div>
           </div>
+        </div>
 
-          {error && <p className="text-error mt-5">{error}</p>}
-
-          <div className="mt-8 flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => router.push("/dashboard/products")}
-              className="btn-secondary"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="submit"
-              disabled={saving}
-              className="btn-primary"
-            >
-              {saving ? "Saving..." : "Save Product"}
-            </button>
+        {error && (
+          <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+            {error}
           </div>
-        </form>
-      </div>
-    </main>
+        )}
+
+        {/* Action Buttons */}
+        <div className="flex items-center justify-end gap-3 pt-3">
+          <Link
+            href="/dashboard/products"
+            className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
+          >
+            Cancel
+          </Link>
+
+          <button
+            type="submit"
+            disabled={saving}
+            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition shadow-xs disabled:opacity-50 cursor-pointer"
+          >
+            {saving ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>Saving Product...</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-3.5 h-3.5" />
+                <span>Save Product</span>
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+
+      {/* Duplicate Product Confirmation Modal */}
+      <ConfirmModal
+        isOpen={duplicateModalOpen}
+        title="Duplicate Product Detected"
+        message={`A product named "${name.trim()}" already exists in category "${category}". If you are receiving new stock of this product at the same or different price, use "Add Purchase" instead.`}
+        confirmText="Create Anyway as Distinct"
+        cancelText="Switch to Add Purchase"
+        isDanger={false}
+        onConfirm={async () => {
+          setDuplicateModalOpen(false);
+          setSaving(true);
+          try {
+            await executeProductCreation();
+          } catch (err) {
+            console.error(err);
+            showToast("Failed to create product", "error");
+          } finally {
+            setSaving(false);
+          }
+        }}
+        onCancel={() => {
+          setDuplicateModalOpen(false);
+          if (duplicateId) {
+            router.push(`/dashboard/purchases/add?productId=${duplicateId}`);
+          }
+        }}
+      />
+    </div>
   );
 }

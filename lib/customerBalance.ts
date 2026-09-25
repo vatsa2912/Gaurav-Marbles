@@ -18,6 +18,7 @@ export interface CustomerSale {
 }
 
 export type SaleRecord = CustomerSale;
+export type CustomerSaleRecord = CustomerSale;
 
 export interface CustomerPaymentRecord {
   id?: string;

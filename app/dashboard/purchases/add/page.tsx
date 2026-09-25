@@ -22,6 +22,7 @@ import { getTodayDateString, formatDisplayDate } from "@/lib/dateUtils";
 import { getParties } from "@/lib/ledgerService";
 import { type Party } from "@/lib/ledgerTypes";
 import Link from "next/link";
+import { useToast } from "@/components/ui/ToastContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -299,6 +300,7 @@ export default function AddPurchasePage() {
 
 function AddPurchaseContent() {
   const router = useRouter();
+  const { showToast } = useToast();
   const searchParams = useSearchParams();
   const preselectedProductId = searchParams.get("productId") || "";
 
@@ -429,7 +431,7 @@ function AddPurchaseContent() {
 
   const handleRemoveItem = (index: number) => {
     if (items.length <= 1) {
-      alert("An invoice must contain at least one product item.");
+      showToast("An invoice must contain at least one product item.", "error");
       return;
     }
     setItems((prev) => prev.filter((_, idx) => idx !== index));
@@ -488,19 +490,19 @@ function AddPurchaseContent() {
     setError("");
 
     if (!supplierName.trim()) {
-      alert("Please enter a supplier name.");
+      showToast("Please enter a supplier name.", "error");
       return;
     }
     if (!supplierInvoice.trim()) {
-      alert("Please enter the invoice number.");
+      showToast("Please enter the invoice number.", "error");
       return;
     }
     if (!purchaseDate.trim()) {
-      alert("Please select the purchase date.");
+      showToast("Please select the purchase date.", "error");
       return;
     }
     if (items.length === 0) {
-      alert("Please add at least one product item.");
+      showToast("Please add at least one product item.", "error");
       return;
     }
 
@@ -511,27 +513,29 @@ function AddPurchaseContent() {
 
       if (it.purchaseType === "Existing Product") {
         if (!it.productId || !it.selectedProduct) {
-          alert(`Please select an existing product for Item #${itemNum}.`);
+          showToast(`Please select an existing product for Item #${itemNum}.`, "error");
           return;
         }
         const qty = Number(it.existingQty);
         if (!it.existingQty || isNaN(qty) || qty <= 0) {
-          alert(
-            `Please enter a valid quantity greater than 0 for Item #${itemNum} (${it.selectedProduct.name}).`
+          showToast(
+            `Please enter a valid quantity greater than 0 for Item #${itemNum} (${it.selectedProduct.name}).`,
+            "error"
           );
           return;
         }
         const price = Number(it.existingPurchasePrice);
         if (it.existingPurchasePrice === "" || isNaN(price) || price < 0) {
-          alert(
-            `Please enter a valid purchase price for Item #${itemNum} (${it.selectedProduct.name}).`
+          showToast(
+            `Please enter a valid purchase price for Item #${itemNum} (${it.selectedProduct.name}).`,
+            "error"
           );
           return;
         }
       } else {
         // New Product
         if (!it.newProductName.trim()) {
-          alert(`Please enter a product name for Item #${itemNum}.`);
+          showToast(`Please enter a product name for Item #${itemNum}.`, "error");
           return;
         }
 
@@ -542,8 +546,9 @@ function AddPurchaseContent() {
             p.category?.trim().toLowerCase() === it.newCategory.trim().toLowerCase()
         );
         if (existingInCatalog) {
-          alert(
-            `"${it.newProductName.trim()}" in Item #${itemNum} already exists in your ${it.newCategory} catalog. Please select "Existing Product" instead.`
+          showToast(
+            `"${it.newProductName.trim()}" in Item #${itemNum} already exists in your ${it.newCategory} catalog. Please select "Existing Product" instead.`,
+            "error"
           );
           return;
         }
@@ -556,8 +561,9 @@ function AddPurchaseContent() {
             prev.newProductName.trim().toLowerCase() === it.newProductName.trim().toLowerCase() &&
             prev.newCategory.trim().toLowerCase() === it.newCategory.trim().toLowerCase()
           ) {
-            alert(
-              `Item #${itemNum} has the same name and category as Item #${j + 1} in this invoice.`
+            showToast(
+              `Item #${itemNum} has the same name and category as Item #${j + 1} in this invoice.`,
+              "error"
             );
             return;
           }
@@ -565,22 +571,25 @@ function AddPurchaseContent() {
 
         const qty = Number(it.newPurchaseQty);
         if (!it.newPurchaseQty || isNaN(qty) || qty <= 0) {
-          alert(
-            `Please enter a valid purchase quantity greater than 0 for Item #${itemNum} (${it.newProductName}).`
+          showToast(
+            `Please enter a valid purchase quantity greater than 0 for Item #${itemNum} (${it.newProductName}).`,
+            "error"
           );
           return;
         }
         const pPrice = Number(it.newPurchasePrice);
         if (it.newPurchasePrice === "" || isNaN(pPrice) || pPrice < 0) {
-          alert(
-            `Please enter a valid purchase price for Item #${itemNum} (${it.newProductName}).`
+          showToast(
+            `Please enter a valid purchase price for Item #${itemNum} (${it.newProductName}).`,
+            "error"
           );
           return;
         }
         const sPrice = Number(it.newSellingPrice);
         if (it.newSellingPrice === "" || isNaN(sPrice) || sPrice < 0) {
-          alert(
-            `Please enter a valid selling price for Item #${itemNum} (${it.newProductName}).`
+          showToast(
+            `Please enter a valid selling price for Item #${itemNum} (${it.newProductName}).`,
+            "error"
           );
           return;
         }
@@ -595,8 +604,9 @@ function AddPurchaseContent() {
         (Number(bankAmount) || 0) +
         (Number(creditAmount) || 0);
       if (Math.abs(paidSum - totalInvoiceAmount) > 0.01) {
-        alert(
-          `Split payment sum (₹${paidSum.toLocaleString("en-IN")}) does not equal total invoice amount (₹${totalInvoiceAmount.toLocaleString("en-IN")}).`
+        showToast(
+          `Split payment sum (₹${paidSum.toLocaleString("en-IN")}) does not equal total invoice amount (₹${totalInvoiceAmount.toLocaleString("en-IN")}).`,
+          "error"
         );
         return;
       }
@@ -875,11 +885,13 @@ function AddPurchaseContent() {
         transaction.set(newPurchaseRef, purchaseData);
       });
 
+      showToast("Purchase invoice recorded successfully.", "success");
       router.push("/dashboard/purchases");
     } catch (err: any) {
       console.error("Error saving purchase invoice:", err);
-      setError(err?.message || "Failed to save purchase invoice.");
-      alert(err?.message || "Failed to save purchase invoice.");
+      const errMsg = err?.message || "Failed to save purchase invoice.";
+      setError(errMsg);
+      showToast(errMsg, "error");
     } finally {
       setSaving(false);
     }

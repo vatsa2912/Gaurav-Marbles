@@ -8,6 +8,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { useToast } from "@/components/ui/ToastContext";
 
 const DEFAULT_CATEGORIES = [
   "Rent",
@@ -23,6 +24,7 @@ const DEFAULT_CATEGORIES = [
 export default function EditExpensePage() {
   const params = useParams();
   const router = useRouter();
+  const { showToast } = useToast();
 
   const expenseId = params.id as string;
 
@@ -49,7 +51,7 @@ export default function EditExpensePage() {
         const expenseSnap = await getDoc(expenseRef);
 
         if (!expenseSnap.exists()) {
-          alert("Expense not found.");
+          showToast("Expense not found.", "error");
           router.push("/dashboard/expenses");
           return;
         }
@@ -76,7 +78,7 @@ export default function EditExpensePage() {
           "Error loading expense:",
           error
         );
-        alert("Could not load expense.");
+        showToast("Could not load expense.", "error");
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -88,7 +90,7 @@ export default function EditExpensePage() {
     return () => {
       isMounted = false;
     };
-  }, [expenseId, router]);
+  }, [expenseId, router, showToast]);
 
   const handleSave = async (
     e: React.FormEvent
@@ -96,19 +98,19 @@ export default function EditExpensePage() {
     e.preventDefault();
 
     if (!title.trim()) {
-      alert("Expense title is required.");
+      showToast("Expense title is required.", "error");
       return;
     }
 
     const numericAmount = Number(amount);
 
     if (!amount.trim() || isNaN(numericAmount) || !Number.isFinite(numericAmount) || numericAmount <= 0) {
-      alert("Please enter a valid expense amount greater than 0.");
+      showToast("Please enter a valid expense amount greater than 0.", "error");
       return;
     }
 
     if (!expenseDate) {
-      alert("Expense date is required.");
+      showToast("Expense date is required.", "error");
       return;
     }
 
@@ -129,13 +131,14 @@ export default function EditExpensePage() {
         notes: notes.trim(),
       });
 
+      showToast("Expense updated successfully.", "success");
       router.push("/dashboard/expenses");
     } catch (error) {
       console.error(
         "Error updating expense:",
         error
       );
-      alert("Could not update expense.");
+      showToast("Could not update expense.", "error");
     } finally {
       setSaving(false);
     }

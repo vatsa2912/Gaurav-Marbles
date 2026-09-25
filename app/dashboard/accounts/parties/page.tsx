@@ -6,8 +6,11 @@ import { type Party, type PartyType } from "@/lib/ledgerTypes";
 import { getParties, deleteParty } from "@/lib/ledgerService";
 import { formatLedgerAmount } from "@/lib/ledgerTypes";
 import PartyModal from "@/components/ledger/PartyModal";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { useToast } from "@/components/ui/ToastContext";
 
 export default function PartiesPage() {
+  const { showToast } = useToast();
   const [parties, setParties] = useState<Party[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -19,9 +22,11 @@ export default function PartiesPage() {
   const [editingParty, setEditingParty] = useState<Party | null>(null);
   const [defaultModalType, setDefaultModalType] = useState<PartyType>("Customer");
 
-  // Deletion feedback
+  // Deletion feedback & modal
   const [actionError, setActionError] = useState("");
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [partyToDelete, setPartyToDelete] = useState<Party | null>(null);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [isDeletingParty, setIsDeletingParty] = useState(false);
 
   const reloadParties = async () => {
     try {
@@ -85,20 +90,27 @@ export default function PartiesPage() {
     .filter((p) => p.openingBalanceType === "Credit")
     .reduce((sum, p) => sum + (p.openingBalance || 0), 0);
 
-  const handleDelete = async (party: Party) => {
-    const confirmMsg = `Are you sure you want to delete "${party.name}"?\nThis cannot be undone.`;
-    if (!window.confirm(confirmMsg)) return;
+  const handleDeleteClick = (party: Party) => {
+    setPartyToDelete(party);
+    setDeleteModalOpen(true);
+  };
 
+  const handleConfirmDelete = async () => {
+    if (!partyToDelete) return;
     try {
-      setDeletingId(party.id);
+      setIsDeletingParty(true);
       setActionError("");
-      await deleteParty(party.id, party.name);
+      await deleteParty(partyToDelete.id, partyToDelete.name);
+      showToast(`Party "${partyToDelete.name}" deleted successfully.`, "success");
+      setDeleteModalOpen(false);
+      setPartyToDelete(null);
       await reloadParties();
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : "Failed to delete party.";
+      showToast(errorMsg, "error");
       setActionError(errorMsg);
     } finally {
-      setDeletingId(null);
+      setIsDeletingParty(false);
     }
   };
 
@@ -299,7 +311,7 @@ export default function PartiesPage() {
                   </tr>
                 ) : (
                   filteredParties.map((party) => {
-                    const isDeleting = deletingId === party.id;
+                    const isDeleting = partyToDelete?.id === party.id && isDeletingParty;
                     const ledgerLink =
                       party.type === "Supplier"
                         ? `/dashboard/accounts/supplier-ledger?party=${encodeURIComponent(
@@ -413,7 +425,7 @@ export default function PartiesPage() {
 
                             <button
                               type="button"
-                              onClick={() => handleDelete(party)}
+                              onClick={() => handleDeleteClick(party)}
                               disabled={isDeleting}
                               className="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition disabled:opacity-50"
                               title="Delete Party"
@@ -441,6 +453,27 @@ export default function PartiesPage() {
         onSaved={() => {
           setModalOpen(false);
           reloadParties();
+        }}
+      />
+
+      {/* Confirm Delete Party Modal */}
+      <ConfirmModal
+        isOpen={deleteModalOpen}
+        title="Delete Party"
+        message={
+          partyToDelete
+            ? `Are you sure you want to permanently delete "${partyToDelete.name}"? This action cannot be undone.`
+            : "Are you sure you want to delete this party?"
+        }
+        confirmLabel="Delete Party"
+        variant="danger"
+        isLoading={isDeletingParty}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => {
+          if (!isDeletingParty) {
+            setDeleteModalOpen(false);
+            setPartyToDelete(null);
+          }
         }}
       />
     </main>

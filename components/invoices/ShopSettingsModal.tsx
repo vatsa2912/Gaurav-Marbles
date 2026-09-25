@@ -6,6 +6,7 @@ import {
   type ShopSettings,
 } from "@/lib/invoiceTypes";
 import { saveShopSettings } from "@/lib/invoiceService";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 interface ShopSettingsModalProps {
   isOpen: boolean;
@@ -40,6 +41,7 @@ function ShopSettingsDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -79,9 +81,12 @@ function ShopSettingsDialog({
   };
 
   const handleResetToDefaults = () => {
-    if (window.confirm("Reset all settings to default Gaurav Marbles values?")) {
-      setForm(DEFAULT_SHOP_SETTINGS);
-    }
+    setResetConfirmOpen(true);
+  };
+
+  const handleExecuteReset = () => {
+    setForm(DEFAULT_SHOP_SETTINGS);
+    setResetConfirmOpen(false);
   };
 
   return (
@@ -396,6 +401,16 @@ function ShopSettingsDialog({
           </div>
         </form>
       </div>
+
+      <ConfirmModal
+        isOpen={resetConfirmOpen}
+        title="Reset Shop Settings?"
+        message="Are you sure you want to reset all shop and invoice settings to default Gaurav Marbles values? Unsaved custom changes will be overwritten."
+        confirmLabel="Reset to Defaults"
+        variant="warning"
+        onConfirm={handleExecuteReset}
+        onCancel={() => setResetConfirmOpen(false)}
+      />
     </div>
   );
 }

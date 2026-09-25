@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   doc,
   getDoc,
   runTransaction,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
 import {
   checkPurchaseCanBeReversed,
   normaliseLots,
@@ -17,6 +17,18 @@ import {
   type StockLot,
 } from "@/lib/stockLots";
 import { formatDisplayDate } from "@/lib/dateUtils";
+import { useToast } from "@/components/ui/ToastContext";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import {
+  ArrowLeft,
+  Edit2,
+  Trash2,
+  ShoppingBag,
+  Building2,
+  FileText,
+  Calendar,
+  ExternalLink,
+} from "lucide-react";
 
 type PurchaseItem = {
   productId: string;
@@ -41,47 +53,66 @@ type Purchase = {
 export default function PurchaseDetailsPage() {
   const params = useParams();
   const router = useRouter();
+  const { showToast } = useToast();
+
+  const purchaseId = params.id as string;
 
   const [purchase, setPurchase] = useState<Purchase | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
     const loadPurchase = async () => {
       try {
-        const id = params?.id as string;
-        if (!id) {
-          if (isMounted) setLoading(false);
-          return;
-        }
+        if (!purchaseId) return;
+        const purchaseRef = doc(db, "purchases", purchaseId);
+        const purchaseSnapshot = await getDoc(purchaseRef);
 
-        const snapshot = await getDoc(
-          doc(db, "purchases", id)
-        );
+        if (purchaseSnapshot.exists()) {
+          const rawData = purchaseSnapshot.data();
+          let items: PurchaseItem[] = [];
 
-        if (isMounted) {
-          if (snapshot.exists()) {
-            const rawData = snapshot.data();
-            let items = rawData.items || [];
-            if ((!items || items.length === 0) && rawData.productName) {
-              items = [
-                {
-                  productId: rawData.productId || "",
-                  productName: rawData.productName || "Unknown Product",
-                  quantity: Number(rawData.quantity) || 0,
-                  unit: rawData.unit || "unit",
-                  purchasePrice: Number(rawData.purchasePrice) || 0,
-                  sellingPrice: rawData.sellingPrice,
-                  total: Number(rawData.totalAmount || rawData.total) || 0,
-                },
-              ];
-            }
+          if (Array.isArray(rawData.items) && rawData.items.length > 0) {
+            items = rawData.items.map((it: Partial<PurchaseItem>) => ({
+              productId: it.productId || "",
+              productName: it.productName || "Product",
+              quantity: Number(it.quantity) || 0,
+              unit: it.unit || "unit",
+              purchasePrice: Number(it.purchasePrice) || 0,
+              sellingPrice:
+                it.sellingPrice !== undefined && it.sellingPrice !== null
+                  ? Number(it.sellingPrice)
+                  : undefined,
+              total: Number(it.total) || Number(it.quantity) * Number(it.purchasePrice) || 0,
+            }));
+          } else if (rawData.productName || rawData.productId) {
+            items = [
+              {
+                productId: rawData.productId || "",
+                productName: rawData.productName || "Product",
+                quantity: Number(rawData.quantity) || 0,
+                unit: rawData.unit || "unit",
+                purchasePrice: Number(rawData.purchasePrice) || 0,
+                sellingPrice:
+                  rawData.sellingPrice !== undefined && rawData.sellingPrice !== null
+                    ? Number(rawData.sellingPrice)
+                    : undefined,
+                total:
+                  Number(rawData.totalAmount) ||
+                  (Number(rawData.quantity) || 0) * (Number(rawData.purchasePrice) || 0),
+              },
+            ];
+          }
+
+          if (isMounted) {
             setPurchase({ ...rawData, items } as Purchase);
           }
         }
       } catch (error) {
         console.error("Error loading purchase:", error);
+        showToast("Error loading purchase", "error");
       } finally {
         if (isMounted) {
           setLoading(false);
@@ -93,17 +124,13 @@ export default function PurchaseDetailsPage() {
     return () => {
       isMounted = false;
     };
-  }, [params.id]);
+  }, [purchaseId, showToast]);
 
-  const handleDelete = async () => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this purchase? Stock will be reversed."
-    );
-    if (!confirmed) return;
+  const handleConfirmDelete = async () => {
+    if (!purchaseId) return;
 
     try {
       setDeleting(true);
-      const purchaseId = params.id as string;
 
       await runTransaction(db, async (transaction) => {
         const purchaseRef = doc(db, "purchases", purchaseId);
@@ -113,7 +140,6 @@ export default function PurchaseDetailsPage() {
 
         const purchaseData = purchaseSnapshot.data() as Purchase;
 
-        // Aggregate items: group by productId so we know which lots to reverse
         type PurchaseItemRaw = {
           productId?: string;
           quantity?: number;
@@ -121,12 +147,10 @@ export default function PurchaseDetailsPage() {
         };
         const rawItems = (purchaseData.items || []) as PurchaseItemRaw[];
 
-        // Unique product IDs (skip empty)
         const productIds = Array.from(
           new Set(rawItems.map((i) => i.productId).filter(Boolean) as string[])
         );
 
-        // Read all affected products
         const snaps: Record<string, Awaited<ReturnType<typeof transaction.get>>> = {};
         for (const pid of productIds) {
           const snap = await transaction.get(doc(db, "products", pid));
@@ -134,16 +158,18 @@ export default function PurchaseDetailsPage() {
           snaps[pid] = snap;
         }
 
-        // Build working lots per product
         const lotsMap: Record<string, StockLot[]> = {};
         for (const pid of productIds) {
           lotsMap[pid] = normaliseLots({
             id: pid,
-            ...(snaps[pid].data() as { stock?: number; purchasePrice?: number; stockLots?: StockLot[] }),
+            ...(snaps[pid].data() as {
+              stock?: number;
+              purchasePrice?: number;
+              stockLots?: StockLot[];
+            }),
           });
         }
 
-        // Reverse each item from its lot
         for (const rawItem of rawItems) {
           const pid = rawItem.productId;
           if (!pid) continue;
@@ -154,7 +180,6 @@ export default function PurchaseDetailsPage() {
             checkPurchaseCanBeReversed(lotsMap[pid], rawItem.lotId, qty, productName);
             lotsMap[pid] = removeLotQuantity(lotsMap[pid], rawItem.lotId, qty);
           } else {
-            // Legacy purchase without lotId: check if total stock is sufficient
             const currentStock = totalStock(lotsMap[pid]);
             if (currentStock < qty) {
               const sold = qty - currentStock;
@@ -175,18 +200,6 @@ export default function PurchaseDetailsPage() {
           }
         }
 
-        // Validate no negative stock
-        for (const pid of productIds) {
-          const ts = totalStock(lotsMap[pid]);
-          if (ts < 0) {
-            const name = (snaps[pid].data() as { name?: string }).name ?? pid;
-            throw new Error(
-              `Cannot delete: stock of "${name}" would go negative. Some stock may have already been sold.`
-            );
-          }
-        }
-
-        // Update products
         for (const pid of productIds) {
           transaction.update(doc(db, "products", pid), {
             stockLots: lotsMap[pid],
@@ -194,294 +207,245 @@ export default function PurchaseDetailsPage() {
           });
         }
 
-        // Delete the purchase
         transaction.delete(purchaseRef);
       });
 
+      showToast("Purchase deleted and stock reversed successfully", "success");
       router.push("/dashboard/purchases");
     } catch (error) {
       console.error("Error deleting purchase:", error);
-      alert(error instanceof Error ? error.message : "Could not delete purchase.");
+      showToast(error instanceof Error ? error.message : "Could not delete purchase.", "error");
     } finally {
       setDeleting(false);
+      setDeleteModalOpen(false);
     }
   };
 
   if (loading) {
     return (
-      <main className="page-main">
-        <div className="page-content">
-          Loading purchase...
-        </div>
-      </main>
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center shadow-xs">
+        <div className="w-8 h-8 border-3 border-slate-200 border-t-slate-900 rounded-full animate-spin mx-auto mb-3" />
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+          Loading purchase details...
+        </p>
+      </div>
     );
   }
 
   if (!purchase) {
     return (
-      <main className="page-main">
-        <div className="page-content">
-          <button
-            onClick={() =>
-              router.push("/dashboard/purchases")
-            }
-            className="btn-ghost"
-          >
-            ← Back to Purchases
-          </button>
-
-          <div className="card mt-6">
-            <h2 className="text-xl">
-              Purchase not found
-            </h2>
-
-            <p className="text-muted mt-2">
-              This purchase record does not exist.
-            </p>
-          </div>
-        </div>
-      </main>
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center shadow-xs space-y-4">
+        <h2 className="text-lg font-bold text-slate-900">Purchase Not Found</h2>
+        <p className="text-xs text-slate-500">This purchase record does not exist or has been removed.</p>
+        <Link
+          href="/dashboard/purchases"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-semibold hover:bg-slate-800 transition"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Back to Purchases</span>
+        </Link>
+      </div>
     );
   }
 
   return (
-    <main className="page-main">
-
-      <header className="site-header">
-        <h1 className="text-xl">
-          Gaurav Marbles
-        </h1>
-
-        <p className="text-muted">
-          Purchase Details
-        </p>
-      </header>
-
-      <div className="page-content">
-
-        <button
-          onClick={() =>
-            router.push("/dashboard/purchases")
-          }
-          className="btn-ghost"
-        >
-          ← Back to Purchases
-        </button>
-
-        <div className="mt-4 mb-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-2xl">
-                Purchase #{purchase.purchaseNumber}
-              </h2>
-
-              <p className="text-muted mt-1">
-                {formatDisplayDate(purchase.purchaseDate)}
-              </p>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() =>
-                  router.push(
-                    `/dashboard/purchases/edit/${params.id}`
-                  )
-                }
-                className="btn-secondary"
-              >
-                Edit Purchase
-              </button>
-
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="btn-primary"
-                style={{
-                  background: "#dc2626",
-                }}
-              >
-                {deleting ? "Deleting..." : "Delete Purchase"}
-              </button>
-            </div>
+    <div className="space-y-6">
+      {/* Navigation Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
+        <div>
+          <Link
+            href="/dashboard/purchases"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 transition mb-2"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>All Purchases</span>
+          </Link>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+              Purchase #{purchase.purchaseNumber}
+            </h1>
+            {purchase.supplierInvoice && (
+              <span className="font-mono text-xs font-bold px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                {purchase.supplierInvoice}
+              </span>
+            )}
           </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Inward Shipment Date: {formatDisplayDate(purchase.purchaseDate)}
+          </p>
         </div>
 
-        {/* Supplier Details */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => router.push(`/dashboard/purchases/edit/${purchaseId}`)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-semibold transition shadow-xs cursor-pointer"
+          >
+            <Edit2 className="w-3.5 h-3.5" />
+            <span>Edit Purchase</span>
+          </button>
 
-        <div className="card mb-6">
-
-          <h3 className="text-base font-semibold mb-4">
-            Supplier Details
-          </h3>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
-
-            <div>
-              <p className="text-muted">
-                Supplier
-              </p>
-
-              <div className="flex items-center gap-2 mt-1">
-                <p className="font-medium">
-                  {purchase.supplierName}
-                </p>
-                <Link
-                  href={`/dashboard/accounts/supplier-ledger?party=${encodeURIComponent(purchase.supplierName)}`}
-                  className="text-xs font-semibold text-purple-600 hover:text-purple-800 underline"
-                  title="View Tally-Style Supplier Ledger"
-                >
-                  View Ledger ↗
-                </Link>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-muted">
-                Invoice Number
-              </p>
-
-              <p className="font-medium mt-1 font-mono text-blue-700">
-                {purchase.supplierInvoice || "—"}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-muted">
-                Purchase Date
-              </p>
-
-              <p className="font-medium mt-1">
-                {formatDisplayDate(purchase.purchaseDate)}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-muted">
-                Payment Method
-              </p>
-
-              <p className="font-medium mt-1">
-                <span className="px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-800">
-                  {purchase.paymentMethod || "Cash"}
-                </span>
-              </p>
-            </div>
-
-          </div>
+          <button
+            type="button"
+            onClick={() => setDeleteModalOpen(true)}
+            disabled={deleting}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition shadow-xs disabled:opacity-50 cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Delete Purchase</span>
+          </button>
         </div>
-
-        {/* Products */}
-
-        <div className="card mb-6">
-
-          <h3 className="text-base font-semibold mb-4">
-            Purchased Products ({(purchase.items || []).length})
-          </h3>
-
-          <div className="table-wrapper">
-
-            <table className="data-table">
-
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>Quantity</th>
-                  <th>Unit</th>
-                  <th>Purchase Price</th>
-                  <th>Selling Price</th>
-                  <th>Total</th>
-                  <th className="text-center">Action</th>
-                </tr>
-              </thead>
-
-              <tbody>
-
-                {(purchase.items || []).map((item, index) => (
-
-                  <tr key={index}>
-
-                    <td className="font-medium">
-                      {item.productId ? (
-                        <Link
-                          href={`/dashboard/products/${item.productId}`}
-                          className="text-blue-600 hover:underline"
-                          title="View Product Details"
-                        >
-                          {item.productName}
-                        </Link>
-                      ) : (
-                        item.productName
-                      )}
-                    </td>
-
-                    <td className="font-semibold">
-                      {item.quantity.toLocaleString("en-IN")}
-                    </td>
-
-                    <td>
-                      {item.unit}
-                    </td>
-
-                    <td>
-                      ₹{item.purchasePrice.toLocaleString("en-IN")}
-                    </td>
-
-                    <td className="text-emerald-700 font-medium">
-                      {item.sellingPrice !== undefined && item.sellingPrice !== null ? `₹${Number(item.sellingPrice).toLocaleString("en-IN")}` : "—"}
-                    </td>
-
-                    <td className="font-bold">
-                      ₹{item.total.toLocaleString("en-IN")}
-                    </td>
-
-                    <td className="text-center">
-                      {item.productId ? (
-                        <Link
-                          href={`/dashboard/products/${item.productId}`}
-                          className="btn-secondary text-xs px-2.5 py-1"
-                        >
-                          View Product
-                        </Link>
-                      ) : (
-                        <span className="text-muted text-xs">—</span>
-                      )}
-                    </td>
-
-                  </tr>
-
-                ))}
-
-              </tbody>
-
-            </table>
-
-          </div>
-        </div>
-
-        {/* Total */}
-
-        <div className="card">
-
-          <div className="flex justify-end">
-
-            <div className="text-right">
-
-              <p className="text-muted">
-                Total Purchase Amount
-              </p>
-
-              <p className="text-2xl font-bold mt-1">
-                ₹{purchase.totalAmount.toLocaleString("en-IN")}
-              </p>
-
-            </div>
-
-          </div>
-
-        </div>
-
       </div>
 
-    </main>
+      {/* Invoice Meta Overview Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Supplier Info */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Supplier
+          </span>
+          <div className="mt-2 text-base font-bold text-slate-900 truncate">
+            {purchase.supplierName}
+          </div>
+          <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between">
+            <Link
+              href={`/dashboard/accounts/supplier-ledger?party=${encodeURIComponent(purchase.supplierName)}`}
+              className="text-xs font-semibold text-purple-700 hover:text-purple-900 inline-flex items-center gap-1"
+            >
+              <span>Supplier Ledger</span>
+              <ExternalLink className="w-3 h-3" />
+            </Link>
+          </div>
+        </div>
+
+        {/* Invoice Number */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Invoice Number
+          </span>
+          <div className="mt-2 text-base font-mono font-bold text-slate-900">
+            {purchase.supplierInvoice || `#${purchase.purchaseNumber}`}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-2 pt-2 border-t border-slate-100">
+            Recorded in purchases collection
+          </p>
+        </div>
+
+        {/* Payment Method */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Payment Method
+          </span>
+          <div className="mt-2 text-base font-bold text-slate-900">
+            {purchase.paymentMethod || "Cash"}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-2 pt-2 border-t border-slate-100">
+            Settlement terms
+          </p>
+        </div>
+
+        {/* Total Invoice Amount */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Total Invoice Amount
+          </span>
+          <div className="mt-2 text-2xl font-bold text-purple-700">
+            ₹{purchase.totalAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-2 pt-2 border-t border-slate-100">
+            {purchase.items.length} item{purchase.items.length === 1 ? "" : "s"} total
+          </p>
+        </div>
+      </div>
+
+      {/* Items Table Card */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+        <div className="p-5 border-b border-slate-200/80 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+              Purchase Items Breakdown ({purchase.items.length})
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Quantities and lot replenishment prices in this invoice
+            </p>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200/80 text-slate-500 font-semibold uppercase tracking-wider">
+                <th className="py-3 px-4">#</th>
+                <th className="py-3 px-4">Product Name</th>
+                <th className="py-3 px-4 text-right">Quantity</th>
+                <th className="py-3 px-4 text-right">Purchase Price</th>
+                <th className="py-3 px-4 text-right">Selling Price</th>
+                <th className="py-3 px-4 text-right">Total Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {purchase.items.map((item, idx) => (
+                <tr key={idx} className="hover:bg-slate-50/70 transition">
+                  <td className="py-3 px-4 font-mono text-slate-400">{idx + 1}</td>
+
+                  <td className="py-3 px-4 font-bold text-slate-900">
+                    {item.productId ? (
+                      <Link
+                        href={`/dashboard/products/${item.productId}`}
+                        className="hover:text-blue-600 hover:underline"
+                      >
+                        {item.productName}
+                      </Link>
+                    ) : (
+                      item.productName
+                    )}
+                  </td>
+
+                  <td className="py-3 px-4 text-right font-bold text-slate-800">
+                    {item.quantity.toLocaleString("en-IN")}{" "}
+                    <span className="font-normal text-slate-500 text-[11px]">{item.unit}</span>
+                  </td>
+
+                  <td className="py-3 px-4 text-right text-slate-700">
+                    ₹{item.purchasePrice.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                  </td>
+
+                  <td className="py-3 px-4 text-right font-medium text-emerald-700">
+                    {item.sellingPrice !== undefined
+                      ? `₹${item.sellingPrice.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
+                      : "—"}
+                  </td>
+
+                  <td className="py-3 px-4 text-right font-bold text-slate-900">
+                    ₹{item.total.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="bg-slate-50 font-bold border-t-2 border-slate-200 text-slate-900">
+                <td colSpan={5} className="py-3 px-4 text-right">Total Invoice Sum</td>
+                <td className="py-3 px-4 text-right text-purple-700 text-sm">
+                  ₹{purchase.totalAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      {/* Accessible Confirm Modal for Purchase Deletion */}
+      <ConfirmModal
+        isOpen={deleteModalOpen}
+        title="Delete Purchase Invoice"
+        message={`Are you sure you want to delete purchase #${purchase.supplierInvoice || purchase.purchaseNumber}? Stock quantities allocated by this invoice will be reversed if not already sold.`}
+        confirmText="Reverse Stock & Delete"
+        cancelText="Cancel"
+        isDanger={true}
+        loading={deleting}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteModalOpen(false)}
+      />
+    </div>
   );
 }

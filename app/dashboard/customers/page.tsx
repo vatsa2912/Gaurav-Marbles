@@ -1,82 +1,103 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import {
   collection,
   getDocs,
   addDoc,
   deleteDoc,
   doc,
-  serverTimestamp,
   query,
   where,
+  serverTimestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   reconcileCustomerBalance,
-  type CustomerSale,
+  type CustomerSaleRecord,
   type CustomerPaymentRecord,
   type CustomerBalanceSummary,
 } from "@/lib/customerBalance";
+import { useToast } from "@/components/ui/ToastContext";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import {
+  Users,
+  UserPlus,
+  Search,
+  Phone,
+  MapPin,
+  Eye,
+  Edit2,
+  Trash2,
+  BookOpen,
+} from "lucide-react";
 
 type Customer = {
   id: string;
   name: string;
-  phone: string;
-  address: string;
+  phone?: string;
+  address?: string;
   createdAt?: unknown;
 };
 
 export default function CustomersPage() {
   const router = useRouter();
+  const { showToast } = useToast();
+
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [sales, setSales] = useState<CustomerSale[]>([]);
+  const [sales, setSales] = useState<CustomerSaleRecord[]>([]);
   const [payments, setPayments] = useState<CustomerPaymentRecord[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Form states
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+
+  // Filter & sort
   const [search, setSearch] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+
+  // Deletion modal state
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
     let isMounted = true;
+
     const fetchCustomersData = async () => {
       try {
-        const [custSnap, salesSnap, paymentsSnap] = await Promise.all([
-          getDocs(collection(db, "customers")),
-          getDocs(collection(db, "sales")),
-          getDocs(collection(db, "payments")),
-        ]);
+        setLoading(true);
+
+        const [customersSnapshot, salesSnapshot, paymentsSnapshot] =
+          await Promise.all([
+            getDocs(collection(db, "customers")),
+            getDocs(collection(db, "sales")),
+            getDocs(collection(db, "customerPayments")),
+          ]);
+
         if (!isMounted) return;
 
-        const customerList = custSnap.docs.map((customerDoc) => ({
-          id: customerDoc.id,
-          ...customerDoc.data(),
+        const customerList = customersSnapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
         })) as Customer[];
 
-        const salesList = salesSnap.docs.map((sDoc) => {
-          const d = sDoc.data();
-          return {
-            id: sDoc.id,
-            saleNumber: d.saleNumber,
-            saleDate: d.saleDate,
-            totalAmount: Number(d.totalAmount) || 0,
-            paidAmount: d.paidAmount !== undefined ? Number(d.paidAmount) : undefined,
-            receivedAmount: d.receivedAmount !== undefined ? Number(d.receivedAmount) : undefined,
-            dueDate: d.dueDate,
-            customerId: d.customerId,
-            customerName: d.customerName,
-          } as CustomerSale;
-        });
+        const salesList = salesSnapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        })) as CustomerSaleRecord[];
 
-        const paymentsList = paymentsSnap.docs.map((pDoc) => ({
-          id: pDoc.id,
-          ...pDoc.data(),
+        const paymentsList = paymentsSnapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
         })) as CustomerPaymentRecord[];
 
         setCustomers(customerList);
@@ -84,6 +105,7 @@ export default function CustomersPage() {
         setPayments(paymentsList);
       } catch (error) {
         console.error("Error loading customers:", error);
+        showToast("Error loading customers", "error");
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -94,15 +116,13 @@ export default function CustomersPage() {
     return () => {
       isMounted = false;
     };
-  }, [refreshTrigger]);
+  }, [refreshTrigger, showToast]);
 
-  const handleAddCustomer = async (
-    e: React.FormEvent
-  ) => {
+  const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!name.trim()) {
-      alert("Customer name is required.");
+      showToast("Customer name is required", "error");
       return;
     }
 
@@ -119,50 +139,54 @@ export default function CustomersPage() {
       setName("");
       setPhone("");
       setAddress("");
-
+      setShowAddForm(false);
+      showToast(`Customer "${name.trim()}" added successfully`, "success");
       setRefreshTrigger((prev) => prev + 1);
     } catch (error) {
       console.error("Error adding customer:", error);
-      alert("Could not add customer.");
+      showToast("Could not add customer. Please try again.", "error");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this customer?"
-    );
+  const openDeleteModal = (customer: Customer) => {
+    setCustomerToDelete(customer);
+    setDeleteModalOpen(true);
+  };
 
-    if (!confirmed) return;
+  const handleConfirmDelete = async () => {
+    if (!customerToDelete) return;
+    const id = customerToDelete.id;
 
     try {
-      // Check whether this customer has any sales
-      const salesQuery = query(
-        collection(db, "sales"),
-        where("customerId", "==", id)
-      );
+      setDeleting(true);
 
+      // Check whether this customer has any sales
+      const salesQuery = query(collection(db, "sales"), where("customerId", "==", id));
       const salesSnapshot = await getDocs(salesQuery);
 
       if (!salesSnapshot.empty) {
-        alert(
-          "This customer cannot be deleted because they have existing sales records."
+        showToast(
+          "Cannot delete customer: Existing sales records are linked to this customer.",
+          "error"
         );
+        setDeleteModalOpen(false);
         return;
       }
 
-      // Delete customer only if there are no sales
       await deleteDoc(doc(db, "customers", id));
-
-      setCustomers((current) =>
-        current.filter((customer) => customer.id !== id)
-      );
+      setCustomers((current) => current.filter((c) => c.id !== id));
+      showToast("Customer deleted successfully", "success");
+      setDeleteModalOpen(false);
     } catch (error) {
       console.error("Error deleting customer:", error);
-      alert("Could not delete customer.");
+      showToast("Could not delete customer.", "error");
+    } finally {
+      setDeleting(false);
     }
   };
+
   const customerBalances = useMemo(() => {
     const balances: Record<string, CustomerBalanceSummary> = {};
     for (const cust of customers) {
@@ -181,226 +205,185 @@ export default function CustomersPage() {
     return balances;
   }, [customers, sales, payments]);
 
-  const overallMetrics = useMemo(() => {
-    let totalInvoiced = 0;
-    let totalReceived = 0;
-    let totalOutstanding = 0;
-    for (const b of Object.values(customerBalances)) {
-      totalInvoiced += b.totalInvoiced;
-      totalReceived += b.totalReceived;
-      totalOutstanding += b.totalOutstanding;
-    }
-    return { totalInvoiced, totalReceived, totalOutstanding };
-  }, [customerBalances]);
-
   const filteredCustomers = customers
     .filter((customer) => {
-      const searchText = search.toLowerCase().trim();
-
-      if (!searchText) return true;
-
+      const queryStr = search.toLowerCase();
       return (
-        customer.name.toLowerCase().includes(searchText) ||
-        customer.phone.toLowerCase().includes(searchText)
+        customer.name.toLowerCase().includes(queryStr) ||
+        (customer.phone && customer.phone.toLowerCase().includes(queryStr))
       );
     })
     .sort((a, b) => {
-      const comparison = a.name
-        .toLowerCase()
-        .localeCompare(b.name.toLowerCase());
-
-      return sortOrder === "asc" ? comparison : -comparison;
+      if (sortOrder === "asc") {
+        return a.name.localeCompare(b.name);
+      }
+      return b.name.localeCompare(a.name);
     });
 
   return (
-    <main className="page-main">
-      <header className="site-header">
-        <h1 className="text-xl">
-          Gaurav Marbles
-        </h1>
-
-        <p className="text-muted">
-          Customer Management
-        </p>
-      </header>
-
-      <div className="page-content">
-        <div className="mb-6">
-          <h2 className="text-2xl">
-            Customers
-          </h2>
-
-          <p className="text-muted mt-1">
-            Manage your customers, track ledger balances, and view sales history
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Customer Directory</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            Manage customer profiles, dispatch contacts, and reconciled ledger balances.
           </p>
         </div>
 
-        {/* Overview Stat Cards */}
-        {!loading && customers.length > 0 && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4 mb-6">
-            <div className="card">
-              <span className="text-muted text-xs uppercase font-semibold">Total Customers</span>
-              <p className="text-2xl font-bold mt-1">{customers.length}</p>
-            </div>
+        <button
+          type="button"
+          onClick={() => setShowAddForm(!showAddForm)}
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition self-start sm:self-auto cursor-pointer"
+        >
+          <UserPlus className="w-4 h-4" />
+          <span>{showAddForm ? "Close Form" : "Add Customer"}</span>
+        </button>
+      </div>
 
-            <div className="card">
-              <span className="text-muted text-xs uppercase font-semibold">Total Invoiced</span>
-              <p className="text-2xl font-bold mt-1">
-                ₹{overallMetrics.totalInvoiced.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
-              </p>
-            </div>
-
-            <div className="card">
-              <span className="text-xs uppercase font-semibold text-green-700">Total Received</span>
-              <p className="text-2xl font-bold text-green-700 mt-1">
-                ₹{overallMetrics.totalReceived.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
-              </p>
-            </div>
-
-            <div className="card">
-              <span className={`text-xs uppercase font-semibold ${overallMetrics.totalOutstanding > 0 ? "text-red-700" : "text-green-700"}`}>
-                Total Outstanding
-              </span>
-              <p
-                className="text-2xl font-bold mt-1"
-                style={{ color: overallMetrics.totalOutstanding > 0 ? "#dc2626" : "#16a34a" }}
-              >
-                ₹{overallMetrics.totalOutstanding.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
-              </p>
-            </div>
+      {/* Add Customer Card */}
+      {showAddForm && (
+        <form
+          onSubmit={handleAddCustomer}
+          className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4 animate-fadeIn"
+        >
+          <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+            <UserPlus className="w-4 h-4 text-slate-700" />
+            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+              Register New Customer
+            </h2>
           </div>
-        )}
 
-        {/* Add Customer */}
-        <div className="card mb-6">
-          <h3 className="text-lg font-semibold mb-4">
-            Add Customer
-          </h3>
-
-          <form
-            onSubmit={handleAddCustomer}
-            className="grid grid-cols-1 gap-4 md:grid-cols-3"
-          >
-            <div className="form-field">
-              <label>Customer Name</label>
-
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                Full Name *
+              </label>
               <input
                 type="text"
-                placeholder="Enter customer name"
                 value={name}
-                onChange={(e) =>
-                  setName(e.target.value)
-                }
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Rajesh Sharma"
+                required
+                className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
               />
             </div>
 
-            <div className="form-field">
-              <label>Phone Number</label>
-
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                Phone Number
+              </label>
               <input
                 type="tel"
-                placeholder="Enter phone number"
                 value={phone}
-                onChange={(e) =>
-                  setPhone(e.target.value)
-                }
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+91 98765 43210"
+                className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
               />
             </div>
 
-            <div className="form-field">
-              <label>Address</label>
-
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                Address / City
+              </label>
               <input
                 type="text"
-                placeholder="Enter address"
                 value={address}
-                onChange={(e) =>
-                  setAddress(e.target.value)
-                }
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="e.g. Civil Lines, Jaipur"
+                className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
               />
             </div>
+          </div>
 
-            <div className="md:col-span-3">
-              <button
-                type="submit"
-                disabled={saving}
-                className="btn-primary"
-              >
-                {saving
-                  ? "Adding..."
-                  : "+ Add Customer"}
-              </button>
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setShowAddForm(false)}
+              className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition shadow-xs disabled:opacity-50 cursor-pointer"
+            >
+              {saving ? "Saving Customer..." : "Save Customer"}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Filter and Search Card */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 mb-1">
+              Search Customers
+            </label>
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search by name or phone..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-slate-50/50 hover:bg-white"
+              />
             </div>
-          </form>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 mb-1">
+              Sort by Name
+            </label>
+            <select
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value as "asc" | "desc")}
+              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white"
+            >
+              <option value="asc">Alphabetical (A → Z)</option>
+              <option value="desc">Alphabetical (Z → A)</option>
+            </select>
+          </div>
         </div>
+      </div>
 
-        {/* Search & Sort */}
-        {!loading && customers.length > 0 && (
-          <div className="card mb-6">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="form-field">
-                <label>Search Customer</label>
-
-                <input
-                  type="text"
-                  placeholder="Search by name or phone..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-
-              <div className="form-field">
-                <label>Sort by Name</label>
-
-                <select
-                  value={sortOrder}
-                  onChange={(e) =>
-                    setSortOrder(e.target.value as "asc" | "desc")
-                  }
-                >
-                  <option value="asc">A → Z</option>
-                  <option value="desc">Z → A</option>
-                </select>
-              </div>
-            </div>
+      {/* Customers Table */}
+      {loading ? (
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center shadow-xs">
+          <div className="w-8 h-8 border-3 border-slate-200 border-t-slate-900 rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            Loading customers & ledger balances...
+          </p>
+        </div>
+      ) : filteredCustomers.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center shadow-xs">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+            <Users className="w-6 h-6" />
           </div>
-        )}
-
-        {/* Customer List */}
-        {loading ? (
-          <div className="card text-center">
-            Loading customers...
-          </div>
-        ) : customers.length === 0 ? (
-          <div className="card text-center">
-            <div className="text-5xl">
-              👤
-            </div>
-
-            <h3 className="mt-4 text-lg">
-              No customers yet
-            </h3>
-
-            <p className="text-muted mt-2">
-              Add your first customer above.
-            </p>
-          </div>
-        ) : (
-          <div className="table-wrapper">
-            <table className="data-table">
+          <h3 className="text-base font-bold text-slate-900">No customers found</h3>
+          <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+            {search ? "No customer profiles match your search query." : "Register your first customer above."}
+          </p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
               <thead>
-                <tr>
-                  <th>Customer</th>
-                  <th>Phone</th>
-                  <th>Total Invoiced</th>
-                  <th>Total Received</th>
-                  <th>Outstanding</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                <tr className="bg-slate-50 border-b border-slate-200/80 text-slate-500 font-semibold uppercase tracking-wider">
+                  <th className="py-3 px-4">Customer</th>
+                  <th className="py-3 px-4">Phone</th>
+                  <th className="py-3 px-4 text-right">Total Invoiced</th>
+                  <th className="py-3 px-4 text-right">Total Received</th>
+                  <th className="py-3 px-4 text-right">Outstanding Due</th>
+                  <th className="py-3 px-4 text-center">Status</th>
+                  <th className="py-3 px-4 text-center">Actions</th>
                 </tr>
               </thead>
-
-              <tbody>
+              <tbody className="divide-y divide-slate-100">
                 {filteredCustomers.map((customer) => {
                   const balance = customerBalances[customer.id] || {
                     totalInvoiced: 0,
@@ -411,118 +394,110 @@ export default function CustomersPage() {
                     salesCount: 0,
                   };
 
-                  let statusBadgeBg = "#f3f4f6";
-                  let statusBadgeColor = "#4b5563";
-                  let statusText = "No Sales";
+                  let statusBadge = (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600">
+                      No Sales
+                    </span>
+                  );
 
                   if (balance.salesCount > 0) {
                     if (balance.totalOutstanding === 0) {
-                      statusBadgeBg = "#dcfce7";
-                      statusBadgeColor = "#15803d";
-                      statusText = "Cleared";
+                      statusBadge = (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          Cleared
+                        </span>
+                      );
                     } else if (balance.overdueAmount > 0) {
-                      statusBadgeBg = "#fee2e2";
-                      statusBadgeColor = "#b91c1c";
-                      statusText = "Overdue";
+                      statusBadge = (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                          Overdue
+                        </span>
+                      );
                     } else {
-                      statusBadgeBg = "#fef9c3";
-                      statusBadgeColor = "#854d0e";
-                      statusText = "Payment Due";
+                      statusBadge = (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          Payment Due
+                        </span>
+                      );
                     }
                   }
 
                   return (
-                    <tr key={customer.id}>
-                      <td className="font-medium">
-                        <button
-                          type="button"
-                          onClick={() => router.push(`/dashboard/customers/${customer.id}`)}
-                          className="hover:underline text-left font-semibold text-blue-600"
+                    <tr key={customer.id} className="hover:bg-slate-50/80 transition">
+                      <td className="py-3 px-4">
+                        <Link
+                          href={`/dashboard/customers/${customer.id}`}
+                          className="font-bold text-slate-900 hover:text-blue-600 transition"
                         >
                           {customer.name}
-                        </button>
+                        </Link>
                         {customer.address && (
-                          <span className="block text-xs text-muted mt-0.5">{customer.address}</span>
+                          <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-slate-400" />
+                            <span>{customer.address}</span>
+                          </div>
                         )}
                       </td>
 
-                      <td>
-                        {customer.phone || "—"}
+                      <td className="py-3 px-4 text-slate-700 font-mono">
+                        {customer.phone ? (
+                          <div className="flex items-center gap-1.5">
+                            <Phone className="w-3 h-3 text-slate-400" />
+                            <span>{customer.phone}</span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
                       </td>
 
-                      <td className="font-medium">
+                      <td className="py-3 px-4 text-right font-medium text-slate-800">
                         ₹{balance.totalInvoiced.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
                       </td>
 
-                      <td className="font-medium text-green-700">
+                      <td className="py-3 px-4 text-right font-semibold text-emerald-700">
                         ₹{balance.totalReceived.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
                       </td>
 
-                      <td
-                        className="font-bold"
-                        style={{ color: balance.totalOutstanding > 0 ? "#dc2626" : "#16a34a" }}
-                      >
+                      <td className="py-3 px-4 text-right font-bold text-slate-900">
                         ₹{balance.totalOutstanding.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
-                        {balance.totalCredit > 0 && (
-                          <span className="block text-xs text-blue-600 font-normal">
-                            Credit: ₹{balance.totalCredit.toLocaleString("en-IN")}
-                          </span>
-                        )}
                       </td>
 
-                      <td>
-                        <span
-                          style={{
-                            backgroundColor: statusBadgeBg,
-                            color: statusBadgeColor,
-                            padding: "3px 8px",
-                            borderRadius: "9999px",
-                            fontSize: "0.75rem",
-                            fontWeight: 600,
-                            display: "inline-block",
-                          }}
-                        >
-                          {statusText}
-                        </span>
-                      </td>
+                      <td className="py-3 px-4 text-center">{statusBadge}</td>
 
-                      <td>
-                        <div className="flex items-center gap-3">
-                          <button
-                            onClick={() =>
-                              router.push(`/dashboard/accounts/customer-ledger?partyId=${customer.id}`)
-                            }
-                            className="text-sm font-medium hover:underline text-indigo-600"
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <Link
+                            href={`/dashboard/customers/${customer.id}`}
+                            className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition"
+                            title="View Customer Details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Link>
+
+                          <Link
+                            href={`/dashboard/accounts/customer-ledger?party=${encodeURIComponent(customer.name)}`}
+                            className="p-1.5 rounded-lg text-slate-600 hover:text-purple-600 hover:bg-purple-50 transition"
                             title="View Tally-Style Customer Ledger"
                           >
-                            Ledger
+                            <BookOpen className="w-4 h-4" />
+                          </Link>
+
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/dashboard/customers/edit/${customer.id}`)}
+                            className="p-1.5 rounded-lg text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
+                            title="Edit Customer"
+                          >
+                            <Edit2 className="w-4 h-4" />
                           </button>
 
                           <button
-                            onClick={() =>
-                              router.push(`/dashboard/customers/${customer.id}`)
-                            }
-                            className="text-sm font-medium hover:underline text-blue-600"
+                            type="button"
+                            onClick={() => openDeleteModal(customer)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                            title="Delete Customer"
                           >
-                            View
-                          </button>
-
-                          <button
-                            onClick={() =>
-                              router.push(`/dashboard/customers/edit/${customer.id}`)
-                            }
-                            className="text-sm font-medium hover:underline text-gray-700"
-                          >
-                            Edit
-                          </button>
-
-                          <button
-                            onClick={() =>
-                              handleDelete(customer.id)
-                            }
-                            className="text-sm font-medium text-red-600 hover:underline"
-                          >
-                            Delete
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
@@ -532,9 +507,21 @@ export default function CustomersPage() {
               </tbody>
             </table>
           </div>
-        )}
+        </div>
+      )}
 
-      </div>
-    </main>
+      {/* Accessible Confirm Modal for Customer Deletion */}
+      <ConfirmModal
+        isOpen={deleteModalOpen}
+        title="Delete Customer"
+        message={`Are you sure you want to delete customer "${customerToDelete?.name}"? Deletion is safely prevented if this customer has historical invoices.`}
+        confirmText="Delete Customer"
+        cancelText="Cancel"
+        isDanger={true}
+        loading={deleting}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteModalOpen(false)}
+      />
+    </div>
   );
 }

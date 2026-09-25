@@ -21,6 +21,7 @@ import {
 } from "@/lib/invoiceService";
 import { getTodayDateString } from "@/lib/dateUtils";
 import TaxInvoiceDocument from "@/components/invoices/TaxInvoiceDocument";
+import { useToast } from "@/components/ui/ToastContext";
 
 type Customer = {
   id: string;
@@ -43,6 +44,7 @@ type Product = {
 
 export default function NewInvoicePage() {
   const router = useRouter();
+  const { showToast } = useToast();
 
   // Settings & Reference Data
   const [settings, setSettings] = useState<ShopSettings>(DEFAULT_SHOP_SETTINGS);
@@ -290,7 +292,7 @@ export default function NewInvoicePage() {
 
   const removeItem = (index: number) => {
     if (items.length <= 1) {
-      alert("An invoice must contain at least one item.");
+      showToast("An invoice must contain at least one item.", "error");
       return;
     }
     setItems((prev) => prev.filter((_, i) => i !== index));

@@ -32,6 +32,8 @@ import {
   getTodayDateString,
   compareDatesDesc,
 } from "@/lib/dateUtils";
+import { useToast } from "@/components/ui/ToastContext";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 type SaleItem = {
   productId: string;
@@ -67,6 +69,11 @@ export default function SaleDetailsPage() {
   const [payments, setPayments] = useState<CustomerPaymentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const { showToast } = useToast();
+  const [deleteSaleModalOpen, setDeleteSaleModalOpen] = useState(false);
+  const [deletePaymentModalOpen, setDeletePaymentModalOpen] = useState(false);
+  const [paymentToDelete, setPaymentToDelete] = useState<CustomerPaymentRecord | null>(null);
+  const [deletingPayment, setDeletingPayment] = useState(false);
 
   // Payment modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -253,23 +260,25 @@ export default function SaleDetailsPage() {
     }
   };
 
-  const handleDeletePayment = async (payment: CustomerPaymentRecord) => {
-    if (!payment.id) return;
-    const confirmed = window.confirm(
-      `Are you sure you want to delete this payment of ₹${payment.amount.toLocaleString("en-IN")}?`
-    );
-    if (!confirmed) return;
+  const openDeletePaymentModal = (payment: CustomerPaymentRecord) => {
+    setPaymentToDelete(payment);
+    setDeletePaymentModalOpen(true);
+  };
+
+  const handleConfirmDeletePayment = async () => {
+    if (!paymentToDelete?.id) return;
 
     try {
+      setDeletingPayment(true);
       await runTransaction(db, async (transaction) => {
-        const paymentRef = doc(db, "payments", payment.id!);
+        const paymentRef = doc(db, "payments", paymentToDelete.id!);
         const saleRef = doc(db, "sales", saleId);
 
         const saleSnap = await transaction.get(saleRef);
         if (saleSnap.exists()) {
           const saleData = saleSnap.data() as Sale;
           const currentPaid = getEffectiveSalePaid(saleData);
-          const newPaid = Math.max(0, currentPaid - (Number(payment.amount) || 0));
+          const newPaid = Math.max(0, currentPaid - (Number(paymentToDelete.amount) || 0));
           transaction.update(saleRef, {
             receivedAmount: newPaid,
             paidAmount: newPaid,
@@ -279,17 +288,18 @@ export default function SaleDetailsPage() {
         transaction.delete(paymentRef);
       });
 
+      showToast("Payment receipt deleted successfully", "success");
+      setDeletePaymentModalOpen(false);
       setRefreshTrigger((prev) => prev + 1);
     } catch (err) {
       console.error("Error deleting payment:", err);
-      alert("Failed to delete payment.");
+      showToast("Failed to delete payment.", "error");
+    } finally {
+      setDeletingPayment(false);
     }
   };
 
-  const handleDelete = async () => {
-    const confirmed = window.confirm("Are you sure you want to delete this sale?");
-    if (!confirmed) return;
-
+  const handleConfirmDeleteSale = async () => {
     try {
       setDeleting(true);
 
@@ -368,12 +378,14 @@ export default function SaleDetailsPage() {
         transaction.delete(saleRef);
       });
 
+      showToast("Sale deleted and stock restored successfully", "success");
       router.push("/dashboard/sales");
     } catch (error) {
       console.error("Error deleting sale:", error);
-      alert(error instanceof Error ? error.message : "Could not delete sale.");
+      showToast(error instanceof Error ? error.message : "Could not delete sale.", "error");
     } finally {
       setDeleting(false);
+      setDeleteSaleModalOpen(false);
     }
   };
 
@@ -495,7 +507,7 @@ export default function SaleDetailsPage() {
               </button>
 
               <button
-                onClick={handleDelete}
+                onClick={() => setDeleteSaleModalOpen(true)}
                 disabled={deleting}
                 className="btn-primary"
                 style={{
@@ -629,8 +641,8 @@ export default function SaleDetailsPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleDeletePayment(p)}
-                              className="text-xs text-red-600 hover:underline font-medium"
+                              onClick={() => openDeletePaymentModal(p)}
+                              className="text-xs text-red-600 hover:underline font-medium cursor-pointer"
                             >
                               Delete
                             </button>
@@ -883,6 +895,32 @@ export default function SaleDetailsPage() {
             </div>
           </div>
         )}
+
+        {/* Accessible Confirm Modal for Sale Deletion */}
+        <ConfirmModal
+          isOpen={deleteSaleModalOpen}
+          title="Delete Customer Sale"
+          message={`Are you sure you want to delete Sale #${sale?.saleNumber}? Deducted inventory stock lots will be restored, and linked payments will be cleared.`}
+          confirmText="Restore Stock & Delete"
+          cancelText="Cancel"
+          isDanger={true}
+          loading={deleting}
+          onConfirm={handleConfirmDeleteSale}
+          onCancel={() => setDeleteSaleModalOpen(false)}
+        />
+
+        {/* Accessible Confirm Modal for Payment Deletion */}
+        <ConfirmModal
+          isOpen={deletePaymentModalOpen}
+          title="Delete Payment Receipt"
+          message={`Are you sure you want to delete this payment of ₹${paymentToDelete?.amount ? Number(paymentToDelete.amount).toLocaleString("en-IN") : "0"}? The customer balance due will be updated.`}
+          confirmText="Delete Receipt"
+          cancelText="Cancel"
+          isDanger={true}
+          loading={deletingPayment}
+          onConfirm={handleConfirmDeletePayment}
+          onCancel={() => setDeletePaymentModalOpen(false)}
+        />
       </div>
     </main>
   );

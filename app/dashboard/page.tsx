@@ -10,19 +10,33 @@ import {
 import { db } from "@/lib/firebase";
 import { normaliseLots, totalStock as calcLotStock, type StockLot } from "@/lib/stockLots";
 import { formatDisplayDate } from "@/lib/dateUtils";
+import { useUserProfile } from "@/components/ui/UserProfileContext";
+import {
+  Package,
+  ShoppingBag,
+  ShoppingCart,
+  Users,
+  AlertTriangle,
+  Layers,
+  ArrowRight,
+  Plus,
+  FileText,
+  CalendarCheck2,
+  ChevronRight,
+  TrendingUp,
+} from "lucide-react";
 
 export default function DashboardPage() {
+  const { profile } = useUserProfile();
+
   const [productCount, setProductCount] = useState(0);
   const [purchaseCount, setPurchaseCount] = useState(0);
   const [salesCount, setSalesCount] = useState(0);
   const [customerCount, setCustomerCount] = useState(0);
-  const [totalPurchaseAmount, setTotalPurchaseAmount] = useState(0);
-  const [totalSalesAmount, setTotalSalesAmount] = useState(0);
-  const [estimatedProfit, setEstimatedProfit] = useState(0);
-  const [totalExpenses, setTotalExpenses] = useState(0);
   const [totalStock, setTotalStock] = useState(0);
   const [stockByUnit, setStockByUnit] = useState<Record<string, number>>({});
   const [lowStockCount, setLowStockCount] = useState(0);
+  const [outOfStockCount, setOutOfStockCount] = useState(0);
   const [lowStockProducts, setLowStockProducts] = useState<
     {
       id: string;
@@ -56,34 +70,28 @@ export default function DashboardPage() {
   useEffect(() => {
     const loadDashboard = async () => {
       try {
-        const products = await getCountFromServer(
-          collection(db, "products")
-        );
+        const [productsCountSnap, purchasesCountSnap, salesCountSnap, customersCountSnap] =
+          await Promise.all([
+            getCountFromServer(collection(db, "products")),
+            getCountFromServer(collection(db, "purchases")),
+            getCountFromServer(collection(db, "sales")),
+            getCountFromServer(collection(db, "customers")),
+          ]);
 
-        const purchases = await getCountFromServer(
-          collection(db, "purchases")
-        );
+        setProductCount(productsCountSnap.data().count);
+        setPurchaseCount(purchasesCountSnap.data().count);
+        setSalesCount(salesCountSnap.data().count);
+        setCustomerCount(customersCountSnap.data().count);
 
-        const sales = await getCountFromServer(
-          collection(db, "sales")
-        );
-
-        const customers = await getCountFromServer(
-          collection(db, "customers")
-        );
-
-        const productSnapshot = await getDocs(
-          collection(db, "products")
-        );
-
-        const purchaseSnapshot = await getDocs(
-          collection(db, "purchases")
-        );
+        const [productSnapshot, purchaseSnapshot, salesSnapshot] = await Promise.all([
+          getDocs(collection(db, "products")),
+          getDocs(collection(db, "purchases")),
+          getDocs(collection(db, "sales")),
+        ]);
 
         const recentPurchasesData = purchaseSnapshot.docs
           .map((purchaseDoc) => {
             const data = purchaseDoc.data();
-
             return {
               id: purchaseDoc.id,
               purchaseNumber: Number(data.purchaseNumber) || 0,
@@ -95,34 +103,15 @@ export default function DashboardPage() {
           })
           .sort(
             (a, b) =>
-              new Date(b.purchaseDate).getTime() -
-              new Date(a.purchaseDate).getTime()
+              new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime()
           )
           .slice(0, 5);
 
         setRecentPurchases(recentPurchasesData);
 
-        const salesSnapshot = await getDocs(
-          collection(db, "sales")
-        );
-
-        const expenseSnapshot = await getDocs(
-          collection(db, "expenses")
-        );
-
-        let expenseAmount = 0;
-
-        expenseSnapshot.forEach((expenseDoc) => {
-          const data = expenseDoc.data();
-          expenseAmount += Number(data.amount) || 0;
-        });
-
-        setTotalExpenses(expenseAmount);
-
         const recentSalesData = salesSnapshot.docs
           .map((saleDoc) => {
             const data = saleDoc.data();
-
             return {
               id: saleDoc.id,
               saleNumber: Number(data.saleNumber) || 0,
@@ -133,59 +122,15 @@ export default function DashboardPage() {
           })
           .sort(
             (a, b) =>
-              new Date(b.saleDate).getTime() -
-              new Date(a.saleDate).getTime()
+              new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime()
           )
           .slice(0, 5);
 
         setRecentSales(recentSalesData);
 
-        let purchaseAmount = 0;
-        let salesAmount = 0;
-        let costOfGoodsSold = 0;
-
-        purchaseSnapshot.forEach((purchaseDoc) => {
-          const data = purchaseDoc.data();
-          purchaseAmount += Number(data.totalAmount) || 0;
-        });
-
-        salesSnapshot.forEach((saleDoc) => {
-          const data = saleDoc.data();
-
-          salesAmount += Number(data.totalAmount) || 0;
-
-          if (Array.isArray(data.items)) {
-            type ItemWithCost = {
-              costTotal?: number;
-              costAllocations?: { totalCost?: number }[];
-              costPrice?: number;
-              quantity?: number;
-            };
-
-            (data.items as ItemWithCost[]).forEach((item) => {
-              if (item.costTotal !== undefined && !isNaN(Number(item.costTotal))) {
-                costOfGoodsSold += Number(item.costTotal);
-              } else if (Array.isArray(item.costAllocations) && item.costAllocations.length > 0) {
-                costOfGoodsSold += item.costAllocations.reduce(
-                  (sum, alloc) => sum + (Number(alloc.totalCost) || 0),
-                  0
-                );
-              } else {
-                costOfGoodsSold +=
-                  (Number(item.costPrice) || 0) * (Number(item.quantity) || 0);
-              }
-            });
-          }
-        });
-
-        setTotalPurchaseAmount(purchaseAmount);
-        setTotalSalesAmount(salesAmount);
-        setEstimatedProfit(
-          salesAmount - costOfGoodsSold - expenseAmount
-        );
-
         let stockTotal = 0;
         let lowStock = 0;
+        let outOfStock = 0;
         const unitMap: Record<string, number> = {};
 
         const lowStockList: {
@@ -220,9 +165,12 @@ export default function DashboardPage() {
           stockTotal += actualStock;
           unitMap[unit] = (unitMap[unit] || 0) + actualStock;
 
+          if (actualStock <= 0) {
+            outOfStock++;
+          }
+
           if (actualStock <= minimumStock) {
             lowStock++;
-
             lowStockList.push({
               id: productDoc.id,
               name: data.name || "Unnamed Product",
@@ -236,13 +184,10 @@ export default function DashboardPage() {
         setTotalStock(stockTotal);
         setStockByUnit(unitMap);
         setLowStockCount(lowStock);
-        setLowStockProducts(lowStockList);
-        setProductCount(products.data().count);
-        setPurchaseCount(purchases.data().count);
-        setSalesCount(sales.data().count);
-        setCustomerCount(customers.data().count);
+        setOutOfStockCount(outOfStock);
+        setLowStockProducts(lowStockList.slice(0, 6));
       } catch (error) {
-        console.error("Error loading dashboard:", error);
+        console.error("Error loading dashboard data:", error);
       } finally {
         setLoading(false);
       }
@@ -251,330 +196,327 @@ export default function DashboardPage() {
     loadDashboard();
   }, []);
 
+  const todayFormatted = new Date().toLocaleDateString("en-IN", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
   return (
-    <main className="page-main">
-      <header className="site-header">
-        <h1 className="text-xl">
-          Gaurav Marbles
-        </h1>
-
-        <p className="text-muted">
-          Dashboard
-        </p>
-      </header>
-
-      <div className="page-content">
-
-        <div className="mb-6">
-          <h2 className="text-2xl">
-            Dashboard
-          </h2>
-
-          <p className="text-muted mt-1">
-            Welcome to Gaurav Marbles management system
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-4 lg:grid-cols-6">
-
-          {/* Products */}
-          <div className="card">
-            <p className="text-muted">
-              Total Products
-            </p>
-
-            <p className="mt-2 text-3xl font-bold">
-              {loading ? "..." : productCount}
-            </p>
-
-            <button
-              onClick={() => {
-                window.location.href = "/dashboard/products";
-              }}
-              className="btn-primary mt-5"
-            >
-              View Products
-            </button>
-          </div>
-
-          {/* Purchases */}
-          <div className="card">
-            <p className="text-muted">
-              Total Purchases
-            </p>
-
-            <p className="mt-2 text-3xl font-bold">
-              {loading ? "..." : purchaseCount}
-            </p>
-
-            <button
-              onClick={() => {
-                window.location.href = "/dashboard/purchases";
-              }}
-              className="btn-primary mt-5"
-            >
-              View Purchases
-            </button>
-          </div>
-
-          {/* Sales */}
-          <div className="card">
-            <p className="text-muted">
-              Total Sales
-            </p>
-
-            <p className="mt-2 text-3xl font-bold">
-              {loading ? "..." : salesCount}
-            </p>
-
-            <button
-              onClick={() => {
-                window.location.href = "/dashboard/sales";
-              }}
-              className="btn-primary mt-5"
-            >
-              View Sales
-            </button>
-          </div>
-
-          {/* Customers */}
-          <div className="card">
-            <p className="text-muted">
-              Total Customers
-            </p>
-
-            <p className="mt-2 text-3xl font-bold">
-              {loading ? "..." : customerCount}
-            </p>
-
-            <button
-              onClick={() => {
-                window.location.href = "/dashboard/customers";
-              }}
-              className="btn-primary mt-5"
-            >
-              View Customers
-            </button>
-          </div>
-
-          {/* Total Stock */}
-          <div className="card">
-            <p className="text-muted">
-              Total Stock
-            </p>
-
-            <p className="mt-2 text-3xl font-bold">
-              {loading ? "..." : totalStock}
-            </p>
-
-            {/* Unit breakdown */}
-            <div className="mt-2 min-h-6 flex flex-wrap gap-1">
-              {!loading && Object.keys(stockByUnit).length > 0 && (
-                Object.entries(stockByUnit).map(([unit, qty]) => (
-                  <span
-                    key={unit}
-                    className="inline-block text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 font-medium"
-                  >
-                    {qty.toLocaleString()} {unit}
-                  </span>
-                ))
-              )}
+    <div className="space-y-6">
+      {/* Welcome Banner */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 sm:p-7 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Live System
+              </span>
+              <span className="text-xs text-slate-400">•</span>
+              <span className="text-xs font-medium text-slate-500">{todayFormatted}</span>
             </div>
-
-            <button
-              onClick={() => {
-                window.location.href = "/dashboard/products";
-              }}
-              className="btn-primary mt-3"
-            >
-              View Inventory
-            </button>
-          </div>
-
-          {/* Low Stock */}
-          <div className="card">
-            <p className="text-muted">
-              Low Stock
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight mt-1.5">
+              Welcome back, {profile?.fullName || "Administrator"}
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+              Here is your daily operational summary for{" "}
+              <span className="font-semibold text-slate-700">{profile?.shopName || "Gaurav Marbles"}</span>.
             </p>
+          </div>
 
-            <p className="mt-2 text-3xl font-bold">
-              {loading ? "..." : lowStockCount}
-            </p>
-
-            <button
-              onClick={() => {
-                window.location.href = "/dashboard/products";
-              }}
-              className="btn-primary mt-5"
+          {/* Quick Action Launchers */}
+          <div className="flex flex-wrap items-center gap-2 pt-2 sm:pt-0">
+            <Link
+              href="/dashboard/sales/add"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition shadow-xs"
             >
-              View Products
-            </button>
-          </div>
-
-        </div>
-
-        {/* Financial Summary KPI Totals (Temporarily on hold per instruction while preserving data and queries) */}
-        {false && (
-          <div className="grid grid-cols-1 gap-5 mt-6 md:grid-cols-4">
-
-            {/* Total Purchase Amount */}
-            <div className="card">
-              <p className="text-muted">
-                Total Purchase Amount
-              </p>
-
-              <p className="mt-2 text-3xl font-bold">
-                {loading
-                  ? "..."
-                  : `₹${totalPurchaseAmount.toLocaleString("en-IN", {
-                    maximumFractionDigits: 2,
-                  })}`}
-              </p>
-
-              <p className="text-muted mt-2">
-                Sales minus purchases and expenses
-              </p>
-            </div>
-
-            {/* Total Sales Amount */}
-            <div className="card">
-              <p className="text-muted">
-                Total Sales Amount
-              </p>
-
-              <p className="mt-2 text-3xl font-bold">
-                {loading
-                  ? "..."
-                  : `₹${totalSalesAmount.toLocaleString("en-IN", {
-                    maximumFractionDigits: 2,
-                  })}`}
-              </p>
-
-              <p className="text-muted mt-2">
-                Total amount received from sales
-              </p>
-            </div>
-
-            {/* Estimated Business Difference */}
-            <div className="card">
-              <p className="text-muted">
-                Estimated Business Difference
-              </p>
-
-              <p className="mt-2 text-3xl font-bold">
-                {loading
-                  ? "..."
-                  : `₹${estimatedProfit.toLocaleString("en-IN", {
-                    maximumFractionDigits: 2,
-                  })}`}
-              </p>
-
-              <p className="text-muted mt-2">
-                Sales minus actual product cost and expenses
-              </p>
-            </div>
-
-            {/* Total Expenses */}
-            <div className="card">
-              <p className="text-muted">
-                Total Expenses
-              </p>
-
-              <p className="mt-2 text-3xl font-bold">
-                {loading
-                  ? "..."
-                  : `₹${totalExpenses.toLocaleString("en-IN", {
-                    maximumFractionDigits: 2,
-                  })}`}
-              </p>
-
-              <p className="text-muted mt-2">
-                Total business expenses
-              </p>
-
-              <button
-                onClick={() => {
-                  window.location.href = "/dashboard/expenses";
-                }}
-                className="btn-secondary mt-4"
-              >
-                View Expenses
-              </button>
-            </div>
-
-          </div>
-        )}
-
-        {/* Recent Sales */}
-        <div className="card mt-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h3 className="text-lg font-semibold">
-                Recent Sales
-              </h3>
-
-              <p className="text-muted mt-1">
-                Latest sales transactions
-              </p>
-            </div>
+              <Plus className="w-3.5 h-3.5" />
+              <span>New Sale</span>
+            </Link>
 
             <Link
-              href="/dashboard/sales"
-              className="btn-secondary"
+              href="/dashboard/purchases/add"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-semibold transition shadow-xs"
             >
-              View All
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Purchase</span>
+            </Link>
+
+            <Link
+              href="/dashboard/daily-maintain"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-semibold transition shadow-xs"
+            >
+              <CalendarCheck2 className="w-3.5 h-3.5 text-slate-500" />
+              <span>Daily Maintain</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* KPI Cards Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Products KPI */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-col justify-between hover:border-slate-300 transition group">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Total Products
+              </p>
+              <p className="text-2xl font-bold text-slate-900 mt-2 tracking-tight">
+                {loading ? "..." : productCount.toLocaleString()}
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center group-hover:bg-slate-900 group-hover:text-white transition">
+              <Package className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+            <span className="text-slate-500">Catalog items</span>
+            <Link
+              href="/dashboard/products"
+              className="font-semibold text-slate-900 hover:text-slate-600 flex items-center gap-1"
+            >
+              <span>View</span>
+              <ChevronRight className="w-3 h-3" />
+            </Link>
+          </div>
+        </div>
+
+        {/* Total Stock KPI */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-col justify-between hover:border-slate-300 transition group">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Total Inventory Stock
+              </p>
+              <p className="text-2xl font-bold text-slate-900 mt-2 tracking-tight">
+                {loading ? "..." : totalStock.toLocaleString()}
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition">
+              <Layers className="w-5 h-5" />
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-1 min-h-[22px]">
+            {!loading &&
+              Object.entries(stockByUnit).map(([unit, qty]) => (
+                <span
+                  key={unit}
+                  className="inline-block text-[10px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md"
+                >
+                  {qty.toLocaleString()} {unit}
+                </span>
+              ))}
+          </div>
+
+          <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+            <span className="text-slate-500">Stock lots tracked</span>
+            <Link
+              href="/dashboard/products"
+              className="font-semibold text-slate-900 hover:text-slate-600 flex items-center gap-1"
+            >
+              <span>Details</span>
+              <ChevronRight className="w-3 h-3" />
+            </Link>
+          </div>
+        </div>
+
+        {/* Low Stock Alert KPI */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-col justify-between hover:border-slate-300 transition group">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Low / Out of Stock
+              </p>
+              <p className="text-2xl font-bold text-amber-600 mt-2 tracking-tight">
+                {loading ? "..." : lowStockCount}
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:bg-amber-600 group-hover:text-white transition">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+            <span className="text-amber-700 font-medium">
+              {outOfStockCount > 0 ? `${outOfStockCount} critical out-of-stock` : "Healthy thresholds"}
+            </span>
+            <Link
+              href="/dashboard/products"
+              className="font-semibold text-slate-900 hover:text-slate-600 flex items-center gap-1"
+            >
+              <span>Restock</span>
+              <ChevronRight className="w-3 h-3" />
+            </Link>
+          </div>
+        </div>
+
+        {/* Customers KPI */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-col justify-between hover:border-slate-300 transition group">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Registered Customers
+              </p>
+              <p className="text-2xl font-bold text-slate-900 mt-2 tracking-tight">
+                {loading ? "..." : customerCount.toLocaleString()}
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center group-hover:bg-slate-900 group-hover:text-white transition">
+              <Users className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+            <span className="text-slate-500">Accounts & Ledgers</span>
+            <Link
+              href="/dashboard/customers"
+              className="font-semibold text-slate-900 hover:text-slate-600 flex items-center gap-1"
+            >
+              <span>View</span>
+              <ChevronRight className="w-3 h-3" />
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* Low Stock Restock Watchlist (if any) */}
+      {lowStockProducts.length > 0 && (
+        <div className="bg-white rounded-2xl border border-amber-200/90 shadow-xs p-5 sm:p-6">
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-amber-50 text-amber-600">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Restock Attention Needed</h3>
+                <p className="text-xs text-slate-500">
+                  Products currently at or below minimum required stock
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/dashboard/purchases/add"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-slate-900 hover:underline"
+            >
+              <span>Order Stock</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
+                  <th className="py-2.5 px-3">Product</th>
+                  <th className="py-2.5 px-3">Available</th>
+                  <th className="py-2.5 px-3">Min. Required</th>
+                  <th className="py-2.5 px-3">Status</th>
+                  <th className="py-2.5 px-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {lowStockProducts.map((p) => (
+                  <tr key={p.id} className="hover:bg-slate-50/70 transition">
+                    <td className="py-2.5 px-3 font-semibold text-slate-900">
+                      <Link href={`/dashboard/products/${p.id}`} className="hover:underline">
+                        {p.name}
+                      </Link>
+                    </td>
+                    <td className="py-2.5 px-3 font-bold text-slate-800">
+                      {p.stock} <span className="font-normal text-slate-500">{p.unit}</span>
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-600">
+                      {p.minimumStock} {p.unit}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      {p.stock <= 0 ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                          Out of Stock
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          Low Stock
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-3 text-right">
+                      <Link
+                        href={`/dashboard/products/${p.id}`}
+                        className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-[11px] transition"
+                      >
+                        View
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Recent Transactions Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Recent Sales Table */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 sm:p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-blue-50 text-blue-600">
+                <ShoppingCart className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Recent Sales</h3>
+                <p className="text-xs text-slate-500">Latest customer invoices & dispatch</p>
+              </div>
+            </div>
+            <Link
+              href="/dashboard/sales"
+              className="text-xs font-semibold text-slate-900 hover:underline flex items-center gap-1"
+            >
+              <span>View All</span>
+              <ChevronRight className="w-3.5 h-3.5" />
             </Link>
           </div>
 
           {recentSales.length === 0 ? (
-            <p className="text-muted mt-5">
-              No sales available.
-            </p>
+            <div className="py-8 text-center text-xs text-slate-400">
+              No sales recorded yet.
+            </div>
           ) : (
-            <div className="table-wrapper mt-5">
-              <table className="data-table">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
                 <thead>
-                  <tr>
-                    <th>Sale No.</th>
-                    <th>Date</th>
-                    <th>Customer</th>
-                    <th>Total Amount</th>
-                    <th className="text-center">Action</th>
+                  <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
+                    <th className="py-2.5 px-3">Sale #</th>
+                    <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-3">Customer</th>
+                    <th className="py-2.5 px-3">Amount</th>
+                    <th className="py-2.5 px-3 text-right">Action</th>
                   </tr>
                 </thead>
-
-                <tbody>
+                <tbody className="divide-y divide-slate-100">
                   {recentSales.map((sale) => (
-                    <tr key={sale.id}>
-                      <td>
-                        <Link
-                          href={`/dashboard/sales/${sale.id}`}
-                          className="font-semibold text-blue-600 hover:underline"
-                        >
+                    <tr key={sale.id} className="hover:bg-slate-50/70 transition">
+                      <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                        <Link href={`/dashboard/sales/${sale.id}`} className="hover:underline">
                           #{sale.saleNumber}
                         </Link>
                       </td>
-
-                      <td>
+                      <td className="py-2.5 px-3 text-slate-600">
                         {formatDisplayDate(sale.saleDate)}
                       </td>
-
-                      <td>{sale.customerName}</td>
-
-                      <td>
-                        ₹
-                        {sale.totalAmount.toLocaleString(
-                          "en-IN",
-                          {
-                            maximumFractionDigits: 2,
-                          }
-                        )}
+                      <td className="py-2.5 px-3 font-medium text-slate-800 truncate max-w-[120px]">
+                        {sale.customerName}
                       </td>
-
-                      <td className="text-center">
+                      <td className="py-2.5 px-3 font-semibold text-slate-900">
+                        ₹{sale.totalAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-2.5 px-3 text-right">
                         <Link
                           href={`/dashboard/sales/${sale.id}`}
-                          className="btn-secondary text-xs px-2.5 py-1"
+                          className="inline-flex items-center px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-medium text-[11px] transition"
                         >
                           View
                         </Link>
@@ -587,79 +529,64 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Recent Purchases */}
-        <div className="card mt-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h3 className="text-lg font-semibold">
-                Recent Purchases
-              </h3>
-
-              <p className="text-muted mt-1">
-                Latest purchase transactions
-              </p>
+        {/* Recent Purchases Table */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 sm:p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-purple-50 text-purple-600">
+                <ShoppingBag className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Recent Purchases</h3>
+                <p className="text-xs text-slate-500">Inward invoices & lot replenishments</p>
+              </div>
             </div>
-
             <Link
               href="/dashboard/purchases"
-              className="btn-secondary"
+              className="text-xs font-semibold text-slate-900 hover:underline flex items-center gap-1"
             >
-              View All
+              <span>View All</span>
+              <ChevronRight className="w-3.5 h-3.5" />
             </Link>
           </div>
 
           {recentPurchases.length === 0 ? (
-            <p className="text-muted mt-5">
-              No purchases available.
-            </p>
+            <div className="py-8 text-center text-xs text-slate-400">
+              No purchases recorded yet.
+            </div>
           ) : (
-            <div className="table-wrapper mt-5">
-              <table className="data-table">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
                 <thead>
-                  <tr>
-                    <th>Purchase No.</th>
-                    <th>Date</th>
-                    <th>Supplier</th>
-                    <th>Items</th>
-                    <th>Total Amount</th>
-                    <th className="text-center">Action</th>
+                  <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
+                    <th className="py-2.5 px-3">Purchase #</th>
+                    <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-3">Supplier</th>
+                    <th className="py-2.5 px-3">Amount</th>
+                    <th className="py-2.5 px-3 text-right">Action</th>
                   </tr>
                 </thead>
-
-                <tbody>
+                <tbody className="divide-y divide-slate-100">
                   {recentPurchases.map((purchase) => (
-                    <tr key={purchase.id}>
-                      <td>
-                        <Link
-                          href={`/dashboard/purchases/${purchase.id}`}
-                          className="font-semibold text-purple-600 hover:underline"
-                        >
+                    <tr key={purchase.id} className="hover:bg-slate-50/70 transition">
+                      <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                        <Link href={`/dashboard/purchases/${purchase.id}`} className="hover:underline">
                           #{purchase.purchaseNumber}
                         </Link>
                       </td>
-
-                      <td>
+                      <td className="py-2.5 px-3 text-slate-600">
                         {formatDisplayDate(purchase.purchaseDate)}
                       </td>
-
-                      <td>{purchase.supplierName}</td>
-
-                      <td>{purchase.items.length}</td>
-
-                      <td>
-                        ₹
-                        {purchase.totalAmount.toLocaleString(
-                          "en-IN",
-                          {
-                            maximumFractionDigits: 2,
-                          }
-                        )}
+                      <td className="py-2.5 px-3 font-medium text-slate-800 truncate max-w-[120px]">
+                        {purchase.supplierName}
                       </td>
-
-                      <td className="text-center">
+                      <td className="py-2.5 px-3 font-semibold text-slate-900">
+                        ₹{purchase.totalAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-2.5 px-3 text-right">
                         <Link
                           href={`/dashboard/purchases/${purchase.id}`}
-                          className="btn-secondary text-xs px-2.5 py-1"
+                          className="inline-flex items-center px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-medium text-[11px] transition"
                         >
                           View
                         </Link>
@@ -671,164 +598,7 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
-
-        {/* Low Stock Products */}
-        <div className="card mt-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h3 className="text-lg font-semibold">
-                Low Stock Products
-              </h3>
-
-              <p className="text-muted mt-1">
-                Products that may need restocking
-              </p>
-            </div>
-
-            <Link
-              href="/dashboard/products"
-              className="btn-secondary"
-            >
-              View Inventory
-            </Link>
-          </div>
-
-          {lowStockProducts.length === 0 ? (
-            <p className="text-muted mt-5">
-              No low-stock products.
-            </p>
-          ) : (
-            <div className="table-wrapper mt-5">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Product</th>
-                    <th>Current Stock</th>
-                    <th>Minimum Stock</th>
-                    <th>Status</th>
-                    <th className="text-center">Action</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {lowStockProducts.map((product) => (
-                    <tr key={product.id}>
-                      <td className="font-medium">
-                        <Link
-                          href={`/dashboard/products/${product.id}`}
-                          className="text-blue-600 hover:underline font-semibold"
-                        >
-                          {product.name}
-                        </Link>
-                      </td>
-
-                      <td>
-                        {product.stock} {product.unit}
-                      </td>
-
-                      <td>
-                        {product.minimumStock} {product.unit}
-                      </td>
-
-                      <td>
-                        {product.stock <= 0 ? (
-                          <span className="text-error font-medium">
-                            Out of Stock
-                          </span>
-                        ) : (
-                          <span className="font-medium">
-                            Low Stock
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="text-center">
-                        <Link
-                          href={`/dashboard/products/${product.id}`}
-                          className="btn-secondary text-xs px-2.5 py-1"
-                        >
-                          View
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Quick Actions */}
-        <div className="card mt-6">
-          <h3 className="text-lg font-semibold">
-            Quick Actions
-          </h3>
-
-          <div className="mt-4 flex flex-wrap gap-3">
-
-            <button
-              onClick={() => {
-                window.location.href = "/dashboard/products/add";
-              }}
-              className="btn-primary"
-            >
-              + Add Product
-            </button>
-
-            <button
-              onClick={() => {
-                window.location.href = "/dashboard/purchases/add";
-              }}
-              className="btn-secondary"
-            >
-              + New Purchase
-            </button>
-
-            <button
-              onClick={() => {
-                window.location.href = "/dashboard/sales/add";
-              }}
-              className="btn-secondary"
-            >
-              + New Sale
-            </button>
-
-            <Link
-              href="/dashboard/invoices/new"
-              className="btn-primary"
-            >
-              + Generate Bill
-            </Link>
-
-            <Link
-              href="/dashboard/invoices"
-              className="btn-secondary"
-            >
-              Invoices
-            </Link>
-
-            <button
-              onClick={() => {
-                window.location.href = "/dashboard/customers";
-              }}
-              className="btn-secondary"
-            >
-              Customers
-            </button>
-
-            <button
-              onClick={() => {
-                window.location.href = "/dashboard/expenses";
-              }}
-              className="btn-secondary"
-            >
-              Expenses
-            </button>
-
-          </div>
-        </div>
-
       </div>
-    </main>
+    </div>
   );
 }

@@ -15,15 +15,35 @@ import {
 } from "@/lib/invoiceService";
 import { formatDisplayDate } from "@/lib/dateUtils";
 import ShopSettingsModal from "@/components/invoices/ShopSettingsModal";
+import { useToast } from "@/components/ui/ToastContext";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import {
+  FileText,
+  Plus,
+  Settings,
+  Search,
+  RotateCcw,
+  Eye,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
+} from "lucide-react";
 
 export default function InvoicesPage() {
   const router = useRouter();
+  const { showToast } = useToast();
+
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [settings, setSettings] = useState<ShopSettings>(DEFAULT_SHOP_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+
+  // Deletion modal state
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [invoiceToDelete, setInvoiceToDelete] = useState<{ id: string; invoiceNumber: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -39,6 +59,7 @@ export default function InvoicesPage() {
         }
       } catch (err) {
         console.error("Failed to load invoices:", err);
+        showToast("Failed to load invoices", "error");
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -49,20 +70,28 @@ export default function InvoicesPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [showToast]);
 
-  const handleDelete = async (id: string, invoiceNumber: string) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to delete Invoice #${invoiceNumber}? This action cannot be undone.`
-    );
-    if (!confirmed) return;
+  const openDeleteModal = (id: string, invoiceNumber: string) => {
+    setInvoiceToDelete({ id, invoiceNumber });
+    setDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!invoiceToDelete) return;
+    const { id, invoiceNumber } = invoiceToDelete;
 
     try {
+      setDeleting(true);
       await deleteInvoice(id);
       setInvoices((prev) => prev.filter((inv) => inv.id !== id));
+      showToast(`Invoice #${invoiceNumber} deleted successfully`, "success");
+      setDeleteModalOpen(false);
     } catch (err) {
       console.error("Error deleting invoice:", err);
-      alert("Could not delete invoice.");
+      showToast("Could not delete invoice", "error");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -87,239 +116,255 @@ export default function InvoicesPage() {
   const draftCount = invoices.filter((i) => (i.status || "Draft") === "Draft").length;
 
   return (
-    <main className="page-main">
-      <header className="site-header no-print">
-        <h1 className="text-xl font-bold">Gaurav Marbles</h1>
-        <p className="text-muted">Tax Invoices &amp; Customer Billing</p>
-      </header>
-
-      <div className="page-content">
-        {/* Top Header & Action Buttons */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Invoices &amp; Billing</h2>
-            <p className="text-muted text-sm mt-1">
-              Generate GST-compliant tax invoices, manage customer bills, and print A4 sheets
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setSettingsModalOpen(true)}
-              className="btn-secondary text-sm inline-flex items-center gap-1.5"
-            >
-              <span>⚙</span> Shop Settings
-            </button>
-
-            <Link
-              href="/dashboard/invoices/new"
-              className="btn-primary text-sm inline-flex items-center gap-1.5"
-            >
-              <span>+</span> Generate Bill
-            </Link>
-          </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Tax Invoices & Billing</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            Generate GST-compliant tax invoices, customer billing records, and print ready A4 sheets.
+          </p>
         </div>
 
-        {/* Metric KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="card p-4">
-            <div className="text-xs text-muted font-medium uppercase tracking-wider">
-              Total Invoices
-            </div>
-            <div className="text-2xl font-bold text-gray-900 mt-1">
-              {invoices.length}
-            </div>
-            <div className="text-xs text-muted mt-1">
-              {confirmedCount} confirmed · {draftCount} drafts
-            </div>
-          </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSettingsModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-semibold transition shadow-xs cursor-pointer"
+          >
+            <Settings className="w-3.5 h-3.5" />
+            <span>Shop Settings</span>
+          </button>
 
-          <div className="card p-4">
-            <div className="text-xs text-muted font-medium uppercase tracking-wider">
-              Total Billed Value
-            </div>
-            <div className="text-2xl font-bold text-gray-900 mt-1">
-              ₹ {totalBilled.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-            </div>
-            <div className="text-xs text-green-600 mt-1 font-medium">
-              Gross billed amount
-            </div>
-          </div>
+          <Link
+            href="/dashboard/invoices/new"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition shadow-xs"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Generate Bill</span>
+          </Link>
+        </div>
+      </div>
 
-          <div className="card p-4">
-            <div className="text-xs text-muted font-medium uppercase tracking-wider">
-              Total Tax Billed
-            </div>
-            <div className="text-2xl font-bold text-gray-900 mt-1">
-              ₹ {totalTax.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-            </div>
-            <div className="text-xs text-blue-600 mt-1 font-medium">
-              CGST, SGST &amp; IGST
-            </div>
-          </div>
-
-          <div className="card p-4">
-            <div className="text-xs text-muted font-medium uppercase tracking-wider">
-              Registered Shop GSTIN
-            </div>
-            <div className="text-base font-bold font-mono text-gray-900 mt-1 truncate">
-              {settings.gstin}
-            </div>
-            <div className="text-xs text-gray-500 mt-1 truncate">
-              {settings.state} (Code: {settings.stateCode})
-            </div>
-          </div>
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Total Invoices
+          </span>
+          <div className="mt-2 text-2xl font-bold text-slate-900">{invoices.length}</div>
+          <p className="text-[11px] text-slate-400 mt-1">
+            {confirmedCount} confirmed · {draftCount} drafts
+          </p>
         </div>
 
-        {/* Filters and Search */}
-        <div className="card mb-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
-            <div className="form-field sm:col-span-2">
-              <label htmlFor="searchInvoice">Search Invoices</label>
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Total Billed Value
+          </span>
+          <div className="mt-2 text-2xl font-bold text-slate-900">
+            ₹{totalBilled.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+          </div>
+          <p className="text-[11px] text-emerald-600 font-medium mt-1">Gross billed amount</p>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Total Tax Billed
+          </span>
+          <div className="mt-2 text-2xl font-bold text-slate-900">
+            ₹{totalTax.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+          </div>
+          <p className="text-[11px] text-blue-600 font-medium mt-1">CGST, SGST & IGST</p>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Shop GSTIN Registration
+          </span>
+          <div className="mt-2 text-base font-mono font-bold text-slate-900 truncate">
+            {settings.gstin}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1 truncate">
+            {settings.state} (Code: {settings.stateCode})
+          </p>
+        </div>
+      </div>
+
+      {/* Filter and Search Card */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+          <div className="sm:col-span-2">
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 mb-1">
+              Search Invoices
+            </label>
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
               <input
-                id="searchInvoice"
                 type="text"
                 placeholder="Search by invoice number or customer name..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-slate-50/50 hover:bg-white"
               />
             </div>
+          </div>
 
-            <div className="form-field">
-              <label htmlFor="statusFilter">Status Filter</label>
-              <select
-                id="statusFilter"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
-                <option value="all">All Invoices</option>
-                <option value="Draft">Drafts</option>
-                <option value="Confirmed">Confirmed</option>
-                <option value="Paid">Paid</option>
-                <option value="Cancelled">Cancelled</option>
-              </select>
-            </div>
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 mb-1">
+              Status Filter
+            </label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white"
+            >
+              <option value="all">All Invoices</option>
+              <option value="Draft">Drafts</option>
+              <option value="Confirmed">Confirmed</option>
+              <option value="Paid">Paid</option>
+              <option value="Cancelled">Cancelled</option>
+            </select>
           </div>
         </div>
+      </div>
 
-        {/* Invoices Table */}
-        {loading ? (
-          <div className="rounded-xl bg-white p-8 text-center border border-gray-200">
+      {/* Invoices Table Card */}
+      {loading ? (
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center shadow-xs">
+          <div className="w-8 h-8 border-3 border-slate-200 border-t-slate-900 rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
             Loading invoices...
+          </p>
+        </div>
+      ) : filteredInvoices.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center shadow-xs">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+            <FileText className="w-6 h-6" />
           </div>
-        ) : filteredInvoices.length === 0 ? (
-          <div className="rounded-xl bg-white p-10 text-center border border-gray-200">
-            <div className="text-5xl">📄</div>
-            <h3 className="mt-4 text-lg font-semibold text-gray-900">
-              No Invoices Found
-            </h3>
-            <p className="text-muted mt-2 text-sm">
-              {search || statusFilter !== "all"
-                ? "No invoices match the applied filters."
-                : "No tax invoices have been generated yet. Click below to create your first bill."}
-            </p>
-            <Link
-              href="/dashboard/invoices/new"
-              className="btn-primary mt-5 inline-flex items-center gap-2"
-            >
-              + Generate First Bill
-            </Link>
-          </div>
-        ) : (
-          <div className="table-wrapper overflow-x-auto w-full">
-            <table className="data-table w-full">
+          <h3 className="text-base font-bold text-slate-900">No Invoices Found</h3>
+          <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+            {search || statusFilter !== "all"
+              ? "No invoices match the applied search and filter criteria."
+              : "No tax invoices have been generated yet. Click below to create your first bill."}
+          </p>
+          <Link
+            href="/dashboard/invoices/new"
+            className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 transition"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Generate First Bill</span>
+          </Link>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
               <thead>
-                <tr>
-                  <th className="text-left font-medium min-w-[130px]">Invoice No.</th>
-                  <th className="text-center font-medium min-w-[100px]">Date</th>
-                  <th className="text-left font-medium min-w-[180px]">Customer / Consignee</th>
-                  <th className="text-center font-medium min-w-[80px]">Items</th>
-                  <th className="text-right font-medium min-w-[110px]">Taxable Amt</th>
-                  <th className="text-right font-medium min-w-[100px]">Total Tax</th>
-                  <th className="text-right font-medium min-w-[120px]">Grand Total</th>
-                  <th className="text-center font-medium min-w-[100px]">Status</th>
-                  <th className="text-center font-medium min-w-[110px]">Stock Status</th>
-                  <th className="text-center font-medium min-w-[130px]">Actions</th>
+                <tr className="bg-slate-50 border-b border-slate-200/80 text-slate-500 font-semibold uppercase tracking-wider">
+                  <th className="py-3 px-4">Invoice #</th>
+                  <th className="py-3 px-4 text-center">Date</th>
+                  <th className="py-3 px-4">Customer / Buyer</th>
+                  <th className="py-3 px-4 text-center">Items</th>
+                  <th className="py-3 px-4 text-right">Taxable Amt</th>
+                  <th className="py-3 px-4 text-right">Total Tax</th>
+                  <th className="py-3 px-4 text-right">Grand Total</th>
+                  <th className="py-3 px-4 text-center">Status</th>
+                  <th className="py-3 px-4 text-center">Stock Status</th>
+                  <th className="py-3 px-4 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100">
                 {filteredInvoices.map((inv) => {
                   const status = inv.status || "Draft";
-                  const statusColors: Record<string, string> = {
-                    Draft: "bg-gray-100 text-gray-800 border-gray-300",
-                    Confirmed: "bg-blue-50 text-blue-800 border-blue-200",
-                    Paid: "bg-green-50 text-green-800 border-green-200",
-                    Cancelled: "bg-red-50 text-red-800 border-red-200",
+                  const statusStyles: Record<string, string> = {
+                    Draft: "bg-slate-100 text-slate-700 border-slate-200",
+                    Confirmed: "bg-blue-50 text-blue-700 border-blue-200",
+                    Paid: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                    Cancelled: "bg-rose-50 text-rose-700 border-rose-200",
                   };
 
                   return (
-                    <tr key={inv.id} className="hover:bg-gray-50/60">
-                      <td className="font-bold font-mono text-gray-900">
+                    <tr key={inv.id} className="hover:bg-slate-50/80 transition">
+                      <td className="py-3 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
                         <Link
                           href={`/dashboard/invoices/${inv.id}`}
-                          className="hover:underline text-blue-700"
+                          className="hover:underline text-blue-600"
                         >
                           {inv.invoiceNumber}
                         </Link>
                       </td>
-                      <td className="text-center text-sm">
+
+                      <td className="py-3 px-4 text-center text-slate-700 whitespace-nowrap">
                         {formatDisplayDate(inv.invoiceDate)}
                       </td>
-                      <td className="text-left">
-                        <div className="font-semibold text-gray-900">
+
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-slate-900">
                           {inv.consignee?.name || inv.buyer?.name || "Walk-in Customer"}
                         </div>
                         {inv.consignee?.phone && (
-                          <div className="text-xs text-muted">{inv.consignee.phone}</div>
+                          <div className="text-[11px] text-slate-400 font-mono">
+                            {inv.consignee.phone}
+                          </div>
                         )}
                       </td>
-                      <td className="text-center font-mono text-xs">
+
+                      <td className="py-3 px-4 text-center font-mono font-medium text-slate-700">
                         {(inv.items || []).length}
                       </td>
-                      <td className="text-right font-medium">
-                        ₹ {Number(inv.subtotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+
+                      <td className="py-3 px-4 text-right font-medium text-slate-700 whitespace-nowrap">
+                        ₹{Number(inv.subtotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                       </td>
-                      <td className="text-right text-gray-700">
-                        ₹ {Number(inv.totalTax || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+
+                      <td className="py-3 px-4 text-right text-slate-600 whitespace-nowrap">
+                        ₹{Number(inv.totalTax || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                       </td>
-                      <td className="text-right font-bold text-gray-900">
-                        ₹ {Number(inv.grandTotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+
+                      <td className="py-3 px-4 text-right font-bold text-slate-900 whitespace-nowrap">
+                        ₹{Number(inv.grandTotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                       </td>
-                      <td className="text-center">
+
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
                         <span
-                          className={`inline-block px-2.5 py-0.5 text-xs font-semibold rounded-full border ${
-                            statusColors[status] || "bg-gray-100 text-gray-800"
+                          className={`inline-block px-2.5 py-0.5 text-[10px] font-bold rounded-full border ${
+                            statusStyles[status] || "bg-slate-100 text-slate-700"
                           }`}
                         >
                           {status}
                         </span>
                       </td>
-                      <td className="text-center">
+
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
                         {inv.stockUpdated ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
                             ✓ Deducted
                           </span>
                         ) : (
-                          <span className="text-xs text-amber-700 font-medium">
+                          <span className="text-[11px] text-amber-700 font-medium">
                             Not Deducted
                           </span>
                         )}
                       </td>
-                      <td className="text-center">
+
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-2">
                           <Link
                             href={`/dashboard/invoices/${inv.id}`}
-                            className="text-xs font-semibold text-blue-600 hover:underline"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-[11px] transition"
                           >
-                            View / Print
+                            <Eye className="w-3 h-3" />
+                            <span>View / Print</span>
                           </Link>
+
                           <button
                             type="button"
-                            onClick={() => handleDelete(inv.id, inv.invoiceNumber)}
-                            className="text-xs font-semibold text-red-600 hover:underline"
+                            onClick={() => openDeleteModal(inv.id, inv.invoiceNumber)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                            title="Delete Invoice"
                           >
-                            Delete
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
@@ -329,8 +374,21 @@ export default function InvoicesPage() {
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Accessible Confirm Modal for Invoice Deletion */}
+      <ConfirmModal
+        isOpen={deleteModalOpen}
+        title="Delete Tax Invoice"
+        message={`Are you sure you want to delete Invoice #${invoiceToDelete?.invoiceNumber}? This action cannot be undone.`}
+        confirmText="Delete Invoice"
+        cancelText="Cancel"
+        isDanger={true}
+        loading={deleting}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteModalOpen(false)}
+      />
 
       {/* Shop Settings Modal */}
       <ShopSettingsModal
@@ -339,6 +397,6 @@ export default function InvoicesPage() {
         settings={settings}
         onSaved={(updated) => setSettings(updated)}
       />
-    </main>
+    </div>
   );
 }
