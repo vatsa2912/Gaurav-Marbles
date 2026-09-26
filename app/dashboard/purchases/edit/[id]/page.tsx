@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import {
   doc,
   getDoc,
@@ -9,12 +9,13 @@ import {
   runTransaction,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   addLot,
   checkPurchaseCanBeReversed,
   normaliseLots,
   removeLotQuantity,
+  removePurchaseLotQuantity,
   totalStock,
   type StockLot,
 } from "@/lib/stockLots";
@@ -153,10 +154,12 @@ function ProductAutocomplete({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function EditPurchasePage() {
+function EditPurchaseContent() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const id = params.id as string;
+  const returnTo = searchParams.get("returnTo") || "/dashboard/purchases";
 
   const [products, setProducts] = useState<Product[]>([]);
   const [supplierName, setSupplierName] = useState("");
@@ -315,29 +318,15 @@ export default function EditPurchasePage() {
           const qty = Number(oldItem.quantity) || 0;
           const productName = (snaps[pid].data() as { name?: string }).name ?? pid;
 
-          if (oldItem.lotId) {
-            checkPurchaseCanBeReversed(lotsMap[pid], oldItem.lotId, qty, productName);
-            lotsMap[pid] = removeLotQuantity(lotsMap[pid], oldItem.lotId, qty);
-          } else {
-            // Legacy purchase without lotId: check if total stock is sufficient
-            const currentStock = totalStock(lotsMap[pid]);
-            if (currentStock < qty) {
-              const sold = qty - currentStock;
-              throw new Error(
-                `Cannot modify purchase items for "${productName}": ${sold} unit(s) have already been sold in customer sales.`
-              );
-            }
-            let rem = qty;
-            lotsMap[pid] = [...lotsMap[pid]]
-              .sort((a, b) => (a.purchasedAt ?? "").localeCompare(b.purchasedAt ?? ""))
-              .map((l) => {
-                if (rem <= 0) return l;
-                const take = Math.min(l.quantity, rem);
-                rem -= take;
-                return { ...l, quantity: l.quantity - take };
-              })
-              .filter((l) => l.quantity > 0);
-          }
+          const itemMeta = {
+            lotId: oldItem.lotId,
+            quantity: qty,
+            purchasePrice: oldItem.purchasePrice !== undefined ? Number(oldItem.purchasePrice) : undefined,
+            purchasedAt: oldItem.purchasedAt || purchaseDate,
+          };
+
+          checkPurchaseCanBeReversed(lotsMap[pid], itemMeta, qty, productName);
+          lotsMap[pid] = removePurchaseLotQuantity(lotsMap[pid], itemMeta, qty);
         }
 
         // Step 3: Validate no negative stock before adding new
@@ -397,7 +386,7 @@ export default function EditPurchasePage() {
         }
       });
 
-      router.push("/dashboard/purchases");
+      router.push(returnTo);
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "Could not update purchase.");
@@ -422,7 +411,7 @@ export default function EditPurchasePage() {
       </header>
 
       <div className="page-content-narrow purchase-page-content">
-        <button onClick={() => router.push("/dashboard/purchases")} className="btn-ghost">
+        <button onClick={() => router.push(returnTo)} className="btn-ghost">
           ← Back to Purchases
         </button>
         <h2 className="mt-4 mb-6 text-2xl">Edit Purchase</h2>
@@ -525,7 +514,7 @@ export default function EditPurchasePage() {
           {error && <p className="text-error mb-4">{error}</p>}
 
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => router.push("/dashboard/purchases")}
+            <button type="button" onClick={() => router.push(returnTo)}
               className="btn-secondary">Cancel</button>
             <button type="submit" disabled={saving} className="btn-primary">
               {saving ? "Saving..." : "Update Purchase"}
@@ -534,5 +523,13 @@ export default function EditPurchasePage() {
         </form>
       </div>
     </main>
+  );
+}
+
+export default function EditPurchasePage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Loading purchase...</div>}>
+      <EditPurchaseContent />
+    </Suspense>
   );
 }

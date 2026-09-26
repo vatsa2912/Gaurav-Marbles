@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import {
   doc,
   getDoc,
@@ -12,7 +12,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   normaliseLots,
@@ -61,9 +61,11 @@ type Sale = CustomerSale & {
   createdAt?: unknown;
 };
 
-export default function SaleDetailsPage() {
+function SaleDetailsContent() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get("returnTo") || "/dashboard/sales";
 
   const [sale, setSale] = useState<Sale | null>(null);
   const [payments, setPayments] = useState<CustomerPaymentRecord[]>([]);
@@ -379,7 +381,7 @@ export default function SaleDetailsPage() {
       });
 
       showToast("Sale deleted and stock restored successfully", "success");
-      router.push("/dashboard/sales");
+      router.push(returnTo);
     } catch (error) {
       console.error("Error deleting sale:", error);
       showToast(error instanceof Error ? error.message : "Could not delete sale.", "error");
@@ -421,7 +423,7 @@ export default function SaleDetailsPage() {
             </h2>
 
             <button
-              onClick={() => router.push("/dashboard/sales")}
+              onClick={() => router.push(returnTo)}
               className="btn-primary mt-5"
             >
               Back to Sales
@@ -455,7 +457,7 @@ export default function SaleDetailsPage() {
       <div className="page-content-narrow">
         <div className="mb-6">
           <button
-            onClick={() => router.push("/dashboard/sales")}
+            onClick={() => router.push(returnTo)}
             className="btn-ghost"
           >
             ← Back to Sales
@@ -498,7 +500,7 @@ export default function SaleDetailsPage() {
               <button
                 onClick={() =>
                   router.push(
-                    `/dashboard/sales/edit/${saleId}`
+                    `/dashboard/sales/edit/${saleId}?returnTo=${encodeURIComponent(returnTo)}`
                   )
                 }
                 className="btn-secondary text-xs sm:text-sm py-2 px-3.5"
@@ -923,5 +925,25 @@ export default function SaleDetailsPage() {
         />
       </div>
     </main>
+  );
+}
+
+export default function SaleDetailsPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="page-main">
+          <header className="site-header">
+            <h1 className="text-xl">Gaurav Marbles</h1>
+            <p className="text-muted">Sale Details</p>
+          </header>
+          <div className="page-content">
+            <div className="card text-center">Loading sale...</div>
+          </div>
+        </main>
+      }
+    >
+      <SaleDetailsContent />
+    </Suspense>
   );
 }

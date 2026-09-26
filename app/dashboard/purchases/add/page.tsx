@@ -796,9 +796,15 @@ function AddPurchaseContent() {
             const itemTotal = qty * pPrice;
             const lotId = lotIds[it.id];
 
-            const extraLotInfo: { supplierName?: string; invoiceNumber?: string; lotNumber?: string } = {
+            const extraLotInfo: {
+              supplierName?: string;
+              invoiceNumber?: string;
+              lotNumber?: string;
+              customLotId?: string;
+            } = {
               supplierName: supplierName.trim(),
               invoiceNumber: supplierInvoice.trim(),
+              customLotId: lotId,
             };
             const trimmedLotNum = it.existingLotNumber.trim() || (prod.lotNumber ? String(prod.lotNumber).trim() : "");
             if (
@@ -830,7 +836,7 @@ function AddPurchaseContent() {
               unit: prod.unit || "unit",
               purchasePrice: pPrice,
               total: itemTotal,
-              lotId,
+              lotId: addRes.lotId,
               lotNumber:
                 prod.category === "Marble" && prod.marbleType === "Cut Size"
                   ? ""

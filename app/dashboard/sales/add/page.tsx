@@ -29,6 +29,7 @@ type Product = {
   stock: number;
   size?: string;
   category?: string;
+  gstRate?: number | string;
   stockLots?: StockLot[];
 };
 
@@ -44,6 +45,7 @@ type LineItem = {
   quantity: string;
   unit: string;
   sellingPrice: string;
+  gstRate?: number;
   // computed from FIFO — shown read-only
   costPrice: number;
   costTotal: number;
@@ -57,6 +59,7 @@ const emptyItem = (): LineItem => ({
   quantity: "",
   unit: "",
   sellingPrice: "",
+  gstRate: undefined,
   costPrice: 0,
   costTotal: 0,
   costAllocations: [],
@@ -263,7 +266,7 @@ function ProductAutocomplete({
                 <span style={{ fontWeight: 600 }}>{p.name}</span>
                 {p.size && <span style={{ color: "#6b7280", marginLeft: "0.5rem" }}>{p.size}</span>}
                 <span style={{ color: "#6b7280", marginLeft: "0.5rem" }}>
-                  · {p.unit} · Stock: {p.stock} · ₹{p.sellingPrice}
+                  · {p.unit} · Stock: {p.stock} · ₹{p.sellingPrice} {p.gstRate !== undefined ? `(${p.gstRate}% GST)` : ""}
                 </span>
               </button>
             ))
@@ -389,6 +392,7 @@ export default function AddSalePage() {
       item.productName = product?.name ?? "";
       item.unit = product?.unit ?? "";
       item.sellingPrice = product ? String(product.sellingPrice) : "";
+      item.gstRate = product?.gstRate !== undefined ? Number(product.gstRate) : 18;
       // Recalculate FIFO cost
       if (product) {
         const qty = parseFloat(item.quantity);
@@ -577,6 +581,7 @@ export default function AddSalePage() {
             quantity: qty,
             unit: item.unit,
             sellingPrice: Number(item.sellingPrice),
+            gstRate: item.gstRate !== undefined ? Number(item.gstRate) : 18,
             costPrice,
             costTotal,
             costAllocations: allocations,
@@ -735,6 +740,11 @@ export default function AddSalePage() {
                           onChange={(e) => updateItem(index, "sellingPrice", e.target.value)}
                           placeholder="0" required className="price-input"
                         />
+                        {item.gstRate !== undefined && (
+                          <span className="text-[10px] text-blue-600 font-medium block mt-0.5">
+                            GST: {item.gstRate}%
+                          </span>
+                        )}
                       </td>
                       <td>
                         <span style={{ fontSize: "0.85rem", color: "#6b7280", padding: "0 0.25rem" }}>

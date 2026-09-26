@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import {
   collection,
   doc,
@@ -9,7 +9,7 @@ import {
   runTransaction,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   allocateFifo,
   normaliseLots,
@@ -174,10 +174,12 @@ function ProductAutocomplete({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function EditSalePage() {
+function EditSaleContent() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const saleId = params.id as string;
+  const returnTo = searchParams.get("returnTo") || `/dashboard/sales/${saleId}`;
 
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -442,7 +444,7 @@ export default function EditSalePage() {
         });
       });
 
-      router.push(`/dashboard/sales/${saleId}`);
+      router.push(returnTo);
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "Could not update sale.");
@@ -468,7 +470,7 @@ export default function EditSalePage() {
       </header>
 
       <div className="page-content-narrow purchase-page-content">
-        <button onClick={() => router.push(`/dashboard/sales/${saleId}`)} className="btn-ghost">
+        <button onClick={() => router.push(returnTo)} className="btn-ghost">
           ← Back to Sale
         </button>
         <h2 className="mt-4 mb-6 text-2xl">Edit Sale</h2>
@@ -624,7 +626,7 @@ export default function EditSalePage() {
           {error && <p className="text-error mb-4">{error}</p>}
 
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => router.push(`/dashboard/sales/${saleId}`)}
+            <button type="button" onClick={() => router.push(returnTo)}
               className="btn-secondary">Cancel</button>
             <button type="submit" disabled={saving} className="btn-primary">
               {saving ? "Saving..." : "Save Changes"}
@@ -633,5 +635,25 @@ export default function EditSalePage() {
         </form>
       </div>
     </main>
+  );
+}
+
+export default function EditSalePage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="page-main">
+          <header className="site-header">
+            <h1 className="text-xl">Gaurav Marbles</h1>
+            <p className="text-muted">Edit Sale</p>
+          </header>
+          <div className="page-content">
+            <div className="card text-center">Loading sale...</div>
+          </div>
+        </main>
+      }
+    >
+      <EditSaleContent />
+    </Suspense>
   );
 }

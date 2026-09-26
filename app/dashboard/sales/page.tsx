@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   formatDisplayDate,
@@ -46,16 +46,33 @@ type Sale = {
   createdAt?: unknown;
 };
 
-export default function SalesPage() {
+function SalesContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showToast } = useToast();
 
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
-  const [sortBy, setSortBy] = useState<"newest" | "oldest">("newest");
+  const [search, setSearch] = useState(() => searchParams.get("search") || "");
+  const [fromDate, setFromDate] = useState(() => searchParams.get("fromDate") || "");
+  const [toDate, setToDate] = useState(() => searchParams.get("toDate") || "");
+  const [sortBy, setSortBy] = useState<"newest" | "oldest">(() => {
+    const s = searchParams.get("sortBy");
+    return s === "oldest" ? "oldest" : "newest";
+  });
+
+  // Sync filter state to URL query parameters
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (fromDate) params.set("fromDate", fromDate);
+    if (toDate) params.set("toDate", toDate);
+    if (sortBy !== "newest") params.set("sortBy", sortBy);
+
+    const queryString = params.toString();
+    const newUrl = queryString ? `/dashboard/sales?${queryString}` : "/dashboard/sales";
+    window.history.replaceState(null, "", newUrl);
+  }, [search, fromDate, toDate, sortBy]);
 
   useEffect(() => {
     let isMounted = true;
@@ -134,6 +151,15 @@ export default function SalesPage() {
         String(b.id).localeCompare(String(a.id))
       );
     });
+
+  const currentParams = new URLSearchParams();
+  if (search) currentParams.set("search", search);
+  if (fromDate) currentParams.set("fromDate", fromDate);
+  if (toDate) currentParams.set("toDate", toDate);
+  if (sortBy !== "newest") currentParams.set("sortBy", sortBy);
+  const currentUrl = currentParams.toString()
+    ? `/dashboard/sales?${currentParams.toString()}`
+    : "/dashboard/sales";
 
   return (
     <div className="space-y-6">
@@ -282,7 +308,7 @@ export default function SalesPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <Link
-                        href={`/dashboard/sales/${s.id}`}
+                        href={`/dashboard/sales/${s.id}?returnTo=${encodeURIComponent(currentUrl)}`}
                         className="font-mono text-sm font-bold text-blue-600 hover:underline block truncate"
                       >
                         #{s.saleNumber}
@@ -321,7 +347,7 @@ export default function SalesPage() {
 
                   <div className="pt-1 border-t border-slate-100">
                     <Link
-                      href={`/dashboard/sales/${s.id}`}
+                      href={`/dashboard/sales/${s.id}?returnTo=${encodeURIComponent(currentUrl)}`}
                       className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs transition inline-flex items-center justify-center gap-1.5 min-h-[44px]"
                     >
                       <Eye className="w-3.5 h-3.5" />
@@ -381,7 +407,7 @@ export default function SalesPage() {
 
                       <td className="py-3 px-4 whitespace-nowrap">
                         <Link
-                          href={`/dashboard/sales/${s.id}`}
+                          href={`/dashboard/sales/${s.id}?returnTo=${encodeURIComponent(currentUrl)}`}
                           className="font-mono text-xs font-bold text-blue-600 hover:underline"
                         >
                           #{s.saleNumber}
@@ -416,7 +442,7 @@ export default function SalesPage() {
 
                       <td className="py-3 px-4 text-center whitespace-nowrap">
                         <Link
-                          href={`/dashboard/sales/${s.id}`}
+                          href={`/dashboard/sales/${s.id}?returnTo=${encodeURIComponent(currentUrl)}`}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-medium text-[11px] transition"
                         >
                           <Eye className="w-3.5 h-3.5" />
@@ -433,5 +459,19 @@ export default function SalesPage() {
       </div>
     )}
     </div>
+  );
+}
+
+export default function SalesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-20 text-slate-400 text-sm">
+          Loading sales transactions...
+        </div>
+      }
+    >
+      <SalesContent />
+    </Suspense>
   );
 }

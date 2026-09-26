@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, use, Suspense } from "react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { normaliseLots, totalStock, type StockLot } from "@/lib/stockLots";
 
-export default function EditProductPage({
+function EditProductContent({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -15,6 +15,8 @@ export default function EditProductPage({
   const resolvedParams = use(params);
   const id = resolvedParams.id;
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get("returnTo") || "/dashboard/products";
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Tiles");
@@ -224,7 +226,7 @@ export default function EditProductPage({
       // They are 100% preserved on the document.
       await updateDoc(productRef, updatePayload);
 
-      router.push("/dashboard/products");
+      router.push(returnTo);
     } catch (err) {
       console.error("Error updating product:", err);
       setError("Could not update product.");
@@ -250,7 +252,7 @@ export default function EditProductPage({
         <div className="page-content-narrow">
           <div className="card text-center py-10">
             <p className="text-error font-medium">{error}</p>
-            <Link href="/dashboard/products" className="btn-secondary mt-4 inline-block">
+            <Link href={returnTo} className="btn-secondary mt-4 inline-block">
               ← Back to Products
             </Link>
           </div>
@@ -258,6 +260,11 @@ export default function EditProductPage({
       </main>
     );
   }
+
+  const baseRate = Number(sellingPrice) || 0;
+  const gstPercent = Number(gstRate) || 0;
+  const gstAmount = (baseRate * gstPercent) / 100;
+  const finalPrice = baseRate + gstAmount;
 
   return (
     <main className="page-main">
@@ -269,7 +276,7 @@ export default function EditProductPage({
       <div className="page-content-narrow">
         <div className="mb-6">
           <button
-            onClick={() => router.push("/dashboard/products")}
+            onClick={() => router.push(returnTo)}
             className="btn-ghost"
           >
             ← Back to Products
@@ -606,6 +613,41 @@ export default function EditProductPage({
               />
             </div>
 
+            {/* Live Pricing & GST Preview */}
+            <div className="form-field md:col-span-2 bg-blue-50/60 border border-blue-200/80 rounded-lg p-3.5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-blue-900 uppercase tracking-wider">
+                  Pricing & GST Breakdown (Live Preview)
+                </span>
+                <span className="text-xs text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-full font-medium">
+                  GST Rate: {gstPercent}%
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                <div>
+                  <div className="text-xs text-muted">Base Taxable Rate</div>
+                  <div className="font-semibold text-gray-900 mt-0.5">
+                    ₹{baseRate.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted">GST Amount ({gstPercent}%)</div>
+                  <div className="font-semibold text-blue-700 mt-0.5">
+                    ₹{gstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted">Final Price (Incl. GST)</div>
+                  <div className="font-bold text-emerald-700 text-base mt-0.5">
+                    ₹{finalPrice.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-2">
+                Selling price is recorded as the taxable base rate. Updating the GST rate updates the tax calculated on newly generated customer sales and invoices.
+              </p>
+            </div>
+
             {/* Current Stock (Read-Only) */}
             <div className="form-field md:col-span-2">
               <label htmlFor="stock">Total Available Physical Stock</label>
@@ -680,7 +722,7 @@ export default function EditProductPage({
           <div className="mt-8 flex flex-col-reverse sm:flex-row items-stretch sm:items-center sm:justify-end gap-2.5 sm:gap-3">
             <button
               type="button"
-              onClick={() => router.push("/dashboard/products")}
+              onClick={() => router.push(returnTo)}
               className="btn-secondary w-full sm:w-auto text-center justify-center"
             >
               Cancel
@@ -697,5 +739,26 @@ export default function EditProductPage({
         </form>
       </div>
     </main>
+  );
+}
+
+export default function EditProductPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  return (
+    <Suspense
+      fallback={
+        <main className="page-main flex items-center justify-center p-12">
+          <div className="text-center">
+            <div className="w-8 h-8 border-3 border-gray-300 border-t-black rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-sm text-muted">Loading product...</p>
+          </div>
+        </main>
+      }
+    >
+      <EditProductContent params={params} />
+    </Suspense>
   );
 }

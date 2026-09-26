@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState, Suspense } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   doc,
@@ -13,6 +13,7 @@ import {
   checkPurchaseCanBeReversed,
   normaliseLots,
   removeLotQuantity,
+  removePurchaseLotQuantity,
   totalStock,
   type StockLot,
 } from "@/lib/stockLots";
@@ -50,12 +51,14 @@ type Purchase = {
   paymentMethod?: string;
 };
 
-export default function PurchaseDetailsPage() {
+function PurchaseDetailsContent() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showToast } = useToast();
 
   const purchaseId = params.id as string;
+  const returnTo = searchParams.get("returnTo") || "/dashboard/purchases";
 
   const [purchase, setPurchase] = useState<Purchase | null>(null);
   const [loading, setLoading] = useState(true);
@@ -143,6 +146,9 @@ export default function PurchaseDetailsPage() {
         type PurchaseItemRaw = {
           productId?: string;
           quantity?: number;
+          purchasePrice?: number;
+          purchasedAt?: string;
+          lotNumber?: string;
           lotId?: string;
         };
         const rawItems = (purchaseData.items || []) as PurchaseItemRaw[];
@@ -176,28 +182,16 @@ export default function PurchaseDetailsPage() {
           const qty = Number(rawItem.quantity) || 0;
           const productName = (snaps[pid].data() as { name?: string }).name ?? pid;
 
-          if (rawItem.lotId) {
-            checkPurchaseCanBeReversed(lotsMap[pid], rawItem.lotId, qty, productName);
-            lotsMap[pid] = removeLotQuantity(lotsMap[pid], rawItem.lotId, qty);
-          } else {
-            const currentStock = totalStock(lotsMap[pid]);
-            if (currentStock < qty) {
-              const sold = qty - currentStock;
-              throw new Error(
-                `Cannot delete purchase for "${productName}": ${sold} unit(s) have already been sold in customer sales.`
-              );
-            }
-            let rem = qty;
-            lotsMap[pid] = [...lotsMap[pid]]
-              .sort((a, b) => (a.purchasedAt ?? "").localeCompare(b.purchasedAt ?? ""))
-              .map((l) => {
-                if (rem <= 0) return l;
-                const take = Math.min(l.quantity, rem);
-                rem -= take;
-                return { ...l, quantity: l.quantity - take };
-              })
-              .filter((l) => l.quantity > 0);
-          }
+          const itemMeta = {
+            lotId: rawItem.lotId,
+            quantity: qty,
+            purchasePrice: rawItem.purchasePrice !== undefined ? Number(rawItem.purchasePrice) : undefined,
+            purchasedAt: rawItem.purchasedAt || purchaseData.purchaseDate,
+            lotNumber: rawItem.lotNumber,
+          };
+
+          checkPurchaseCanBeReversed(lotsMap[pid], itemMeta, qty, productName);
+          lotsMap[pid] = removePurchaseLotQuantity(lotsMap[pid], itemMeta, qty);
         }
 
         for (const pid of productIds) {
@@ -211,7 +205,7 @@ export default function PurchaseDetailsPage() {
       });
 
       showToast("Purchase deleted and stock reversed successfully", "success");
-      router.push("/dashboard/purchases");
+      router.push(returnTo);
     } catch (error) {
       console.error("Error deleting purchase:", error);
       showToast(error instanceof Error ? error.message : "Could not delete purchase.", "error");
@@ -238,7 +232,7 @@ export default function PurchaseDetailsPage() {
         <h2 className="text-lg font-bold text-slate-900">Purchase Not Found</h2>
         <p className="text-xs text-slate-500">This purchase record does not exist or has been removed.</p>
         <Link
-          href="/dashboard/purchases"
+          href={returnTo}
           className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-semibold hover:bg-slate-800 transition"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -254,7 +248,7 @@ export default function PurchaseDetailsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
           <Link
-            href="/dashboard/purchases"
+            href={returnTo}
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 transition mb-2"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
@@ -278,7 +272,7 @@ export default function PurchaseDetailsPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => router.push(`/dashboard/purchases/edit/${purchaseId}`)}
+            onClick={() => router.push(`/dashboard/purchases/edit/${purchaseId}?returnTo=${encodeURIComponent(returnTo)}`)}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-semibold transition shadow-xs cursor-pointer"
           >
             <Edit2 className="w-3.5 h-3.5" />
@@ -447,5 +441,13 @@ export default function PurchaseDetailsPage() {
         onCancel={() => setDeleteModalOpen(false)}
       />
     </div>
+  );
+}
+
+export default function PurchaseDetailsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Loading purchase...</div>}>
+      <PurchaseDetailsContent />
+    </Suspense>
   );
 }

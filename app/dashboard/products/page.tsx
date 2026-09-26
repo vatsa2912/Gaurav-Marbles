@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { normaliseLots, type StockLot } from "@/lib/stockLots";
@@ -52,18 +52,61 @@ const CATEGORIES = [
   "Other",
 ];
 
-export default function ProductsPage() {
+function ProductsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showToast } = useToast();
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("Tiles");
-  const [sizeFilter, setSizeFilter] = useState("");
-  const [marbleTypeFilter, setMarbleTypeFilter] = useState("All");
-  const [marbleSizeFilter, setMarbleSizeFilter] = useState("");
-  const [sortBy, setSortBy] = useState("name-asc");
+  const [search, setSearch] = useState(() => searchParams.get("search") || "");
+  const [categoryFilter, setCategoryFilter] = useState(() => searchParams.get("category") || "Tiles");
+  const [sizeFilter, setSizeFilter] = useState(() => searchParams.get("size") || "");
+  const [marbleTypeFilter, setMarbleTypeFilter] = useState(() => searchParams.get("marbleType") || "All");
+  const [marbleSizeFilter, setMarbleSizeFilter] = useState(() => searchParams.get("marbleSize") || "");
+  const [sortBy, setSortBy] = useState(() => searchParams.get("sortBy") || "name-asc");
+
+  const updateUrlParams = (params: {
+    search?: string;
+    category?: string;
+    size?: string;
+    marbleType?: string;
+    marbleSize?: string;
+    sortBy?: string;
+  }) => {
+    if (typeof window === "undefined") return;
+    const current = new URLSearchParams(window.location.search);
+    current.delete("returnTo");
+
+    if (params.search && params.search.trim()) current.set("search", params.search.trim());
+    else current.delete("search");
+
+    if (params.category && params.category !== "Tiles") current.set("category", params.category);
+    else current.delete("category");
+
+    if (params.size && params.size.trim()) current.set("size", params.size.trim());
+    else current.delete("size");
+
+    if (params.marbleType && params.marbleType !== "All") current.set("marbleType", params.marbleType);
+    else current.delete("marbleType");
+
+    if (params.marbleSize && params.marbleSize.trim()) current.set("marbleSize", params.marbleSize.trim());
+    else current.delete("marbleSize");
+
+    if (params.sortBy && params.sortBy !== "name-asc") current.set("sortBy", params.sortBy);
+    else current.delete("sortBy");
+
+    const qs = current.toString();
+    const newUrl = `${window.location.pathname}${qs ? `?${qs}` : ""}`;
+    window.history.replaceState(null, "", newUrl);
+  };
+
+  const getReturnToUrl = () => {
+    if (typeof window !== "undefined") {
+      return window.location.pathname + window.location.search;
+    }
+    return "/dashboard/products";
+  };
 
   // Deletion modal state
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -306,6 +349,14 @@ export default function ProductsPage() {
                 setSizeFilter("");
                 setMarbleTypeFilter("All");
                 setMarbleSizeFilter("");
+                updateUrlParams({
+                  search,
+                  category: cat,
+                  size: "",
+                  marbleType: "All",
+                  marbleSize: "",
+                  sortBy,
+                });
               }}
               className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
                 isActive
@@ -340,7 +391,17 @@ export default function ProductsPage() {
                 type="text"
                 placeholder="Search by name, size..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  updateUrlParams({
+                    search: e.target.value,
+                    category: categoryFilter,
+                    size: sizeFilter,
+                    marbleType: marbleTypeFilter,
+                    marbleSize: marbleSizeFilter,
+                    sortBy,
+                  });
+                }}
                 className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-slate-50/50 hover:bg-white"
               />
             </div>
@@ -354,7 +415,17 @@ export default function ProductsPage() {
               </label>
               <select
                 value={sizeFilter}
-                onChange={(e) => setSizeFilter(e.target.value)}
+                onChange={(e) => {
+                  setSizeFilter(e.target.value);
+                  updateUrlParams({
+                    search,
+                    category: categoryFilter,
+                    size: e.target.value,
+                    marbleType: marbleTypeFilter,
+                    marbleSize: marbleSizeFilter,
+                    sortBy,
+                  });
+                }}
                 className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white"
               >
                 <option value="">All Sizes</option>
@@ -378,6 +449,14 @@ export default function ProductsPage() {
                 onChange={(e) => {
                   setMarbleTypeFilter(e.target.value);
                   setMarbleSizeFilter("");
+                  updateUrlParams({
+                    search,
+                    category: categoryFilter,
+                    size: sizeFilter,
+                    marbleType: e.target.value,
+                    marbleSize: "",
+                    sortBy,
+                  });
                 }}
                 className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white"
               >
@@ -396,7 +475,17 @@ export default function ProductsPage() {
               </label>
               <select
                 value={marbleSizeFilter}
-                onChange={(e) => setMarbleSizeFilter(e.target.value)}
+                onChange={(e) => {
+                  setMarbleSizeFilter(e.target.value);
+                  updateUrlParams({
+                    search,
+                    category: categoryFilter,
+                    size: sizeFilter,
+                    marbleType: marbleTypeFilter,
+                    marbleSize: e.target.value,
+                    sortBy,
+                  });
+                }}
                 className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white"
               >
                 <option value="">All Sizes</option>
@@ -416,7 +505,17 @@ export default function ProductsPage() {
             </label>
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
+              onChange={(e) => {
+                setSortBy(e.target.value);
+                updateUrlParams({
+                  search,
+                  category: categoryFilter,
+                  size: sizeFilter,
+                  marbleType: marbleTypeFilter,
+                  marbleSize: marbleSizeFilter,
+                  sortBy: e.target.value,
+                });
+              }}
               className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white"
             >
               <option value="name-asc">Name (A → Z)</option>
@@ -438,6 +537,14 @@ export default function ProductsPage() {
                 setMarbleTypeFilter("All");
                 setMarbleSizeFilter("");
                 setSortBy("name-asc");
+                updateUrlParams({
+                  search: "",
+                  category: categoryFilter,
+                  size: "",
+                  marbleType: "All",
+                  marbleSize: "",
+                  sortBy: "name-asc",
+                });
               }}
               className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition"
             >
@@ -497,7 +604,7 @@ export default function ProductsPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <Link
-                        href={`/dashboard/products/${product.id}`}
+                        href={`/dashboard/products/${product.id}?returnTo=${encodeURIComponent(getReturnToUrl())}`}
                         className="font-bold text-slate-900 text-sm hover:text-blue-600 transition block truncate"
                       >
                         {product.name}
@@ -544,7 +651,7 @@ export default function ProductsPage() {
 
                   <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
                     <Link
-                      href={`/dashboard/products/${product.id}`}
+                      href={`/dashboard/products/${product.id}?returnTo=${encodeURIComponent(getReturnToUrl())}`}
                       className="flex-1 py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs transition inline-flex items-center justify-center gap-1.5 min-h-[44px]"
                     >
                       <Eye className="w-3.5 h-3.5" />
@@ -552,7 +659,7 @@ export default function ProductsPage() {
                     </Link>
                     <button
                       type="button"
-                      onClick={() => router.push(`/dashboard/products/edit/${product.id}`)}
+                      onClick={() => router.push(`/dashboard/products/edit/${product.id}?returnTo=${encodeURIComponent(getReturnToUrl())}`)}
                       className="flex-1 py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-800 font-semibold text-xs transition inline-flex items-center justify-center gap-1.5 min-h-[44px] cursor-pointer"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
@@ -609,7 +716,7 @@ export default function ProductsPage() {
                     <tr key={product.id} className="hover:bg-slate-50/80 transition">
                       <td className="py-3 px-4">
                         <Link
-                          href={`/dashboard/products/${product.id}`}
+                          href={`/dashboard/products/${product.id}?returnTo=${encodeURIComponent(getReturnToUrl())}`}
                           className="font-bold text-slate-900 hover:text-blue-600 transition"
                         >
                           {product.name}
@@ -696,7 +803,7 @@ export default function ProductsPage() {
                       <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <Link
-                            href={`/dashboard/products/${product.id}`}
+                            href={`/dashboard/products/${product.id}?returnTo=${encodeURIComponent(getReturnToUrl())}`}
                             className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition"
                             title="View Product"
                           >
@@ -705,7 +812,7 @@ export default function ProductsPage() {
 
                           <button
                             type="button"
-                            onClick={() => router.push(`/dashboard/products/edit/${product.id}`)}
+                            onClick={() => router.push(`/dashboard/products/edit/${product.id}?returnTo=${encodeURIComponent(getReturnToUrl())}`)}
                             className="p-1.5 rounded-lg text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
                             title="Edit Product"
                           >
@@ -745,5 +852,13 @@ export default function ProductsPage() {
         onCancel={() => setDeleteModalOpen(false)}
       />
     </div>
+  );
+}
+
+export default function ProductsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Loading products...</div>}>
+      <ProductsContent />
+    </Suspense>
   );
 }

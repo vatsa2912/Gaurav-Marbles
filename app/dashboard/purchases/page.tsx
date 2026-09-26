@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import {
   collection,
   getDocs,
@@ -12,6 +12,7 @@ import {
   checkPurchaseCanBeReversed,
   normaliseLots,
   removeLotQuantity,
+  removePurchaseLotQuantity,
   totalStock,
   type StockLot,
 } from "@/lib/stockLots";
@@ -20,7 +21,7 @@ import {
   matchesDateRange,
   extractTransactionDate,
 } from "@/lib/dateUtils";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useToast } from "@/components/ui/ToastContext";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
@@ -60,16 +61,48 @@ type Purchase = {
   createdAt?: unknown;
 };
 
-export default function PurchasesPage() {
+function PurchasesContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showToast } = useToast();
 
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
-  const [sortBy, setSortBy] = useState<"newest" | "oldest">("newest");
+  const [search, setSearch] = useState(() => searchParams.get("search") || "");
+  const [fromDate, setFromDate] = useState(() => searchParams.get("fromDate") || "");
+  const [toDate, setToDate] = useState(() => searchParams.get("toDate") || "");
+  const [sortBy, setSortBy] = useState<"newest" | "oldest">(
+    () => (searchParams.get("sortBy") as "newest" | "oldest") || "newest"
+  );
+
+  const updateUrlParams = (params: {
+    search?: string;
+    fromDate?: string;
+    toDate?: string;
+    sortBy?: "newest" | "oldest";
+  }) => {
+    if (typeof window === "undefined") return;
+    const current = new URLSearchParams(window.location.search);
+    current.delete("returnTo");
+    if (params.search && params.search.trim()) current.set("search", params.search.trim());
+    else current.delete("search");
+    if (params.fromDate) current.set("fromDate", params.fromDate);
+    else current.delete("fromDate");
+    if (params.toDate) current.set("toDate", params.toDate);
+    else current.delete("toDate");
+    if (params.sortBy && params.sortBy !== "newest") current.set("sortBy", params.sortBy);
+    else current.delete("sortBy");
+    const qs = current.toString();
+    const newUrl = `${window.location.pathname}${qs ? `?${qs}` : ""}`;
+    window.history.replaceState(null, "", newUrl);
+  };
+
+  const getReturnToUrl = () => {
+    if (typeof window !== "undefined") {
+      return window.location.pathname + window.location.search;
+    }
+    return "/dashboard/purchases";
+  };
 
   // Deletion modal state
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -92,8 +125,16 @@ export default function PurchasesPage() {
         const purchaseSnap = await transaction.get(purchaseRef);
         if (!purchaseSnap.exists()) throw new Error("Purchase not found.");
 
-        type RawItem = { productId?: string; quantity?: number; lotId?: string };
-        const rawItems = (purchaseSnap.data().items || []) as RawItem[];
+        const purchaseData = purchaseSnap.data() as Purchase;
+        type RawItem = {
+          productId?: string;
+          quantity?: number;
+          purchasePrice?: number;
+          purchasedAt?: string;
+          lotNumber?: string;
+          lotId?: string;
+        };
+        const rawItems = (purchaseData.items || []) as RawItem[];
 
         const productIds = Array.from(
           new Set(rawItems.map((i) => i.productId).filter(Boolean) as string[])
@@ -124,28 +165,16 @@ export default function PurchasesPage() {
           const qty = Number(rawItem.quantity) || 0;
           const productName = (snaps[pid].data() as { name?: string }).name ?? pid;
 
-          if (rawItem.lotId) {
-            checkPurchaseCanBeReversed(lotsMap[pid], rawItem.lotId, qty, productName);
-            lotsMap[pid] = removeLotQuantity(lotsMap[pid], rawItem.lotId, qty);
-          } else {
-            const currentStock = totalStock(lotsMap[pid]);
-            if (currentStock < qty) {
-              const sold = qty - currentStock;
-              throw new Error(
-                `Cannot delete purchase for "${productName}": ${sold} unit(s) have already been sold in customer sales.`
-              );
-            }
-            let rem = qty;
-            lotsMap[pid] = [...lotsMap[pid]]
-              .sort((a, b) => (a.purchasedAt ?? "").localeCompare(b.purchasedAt ?? ""))
-              .map((l) => {
-                if (rem <= 0) return l;
-                const take = Math.min(l.quantity, rem);
-                rem -= take;
-                return { ...l, quantity: l.quantity - take };
-              })
-              .filter((l) => l.quantity > 0);
-          }
+          const itemMeta = {
+            lotId: rawItem.lotId,
+            quantity: qty,
+            purchasePrice: rawItem.purchasePrice !== undefined ? Number(rawItem.purchasePrice) : undefined,
+            purchasedAt: rawItem.purchasedAt || purchaseData.purchaseDate,
+            lotNumber: rawItem.lotNumber,
+          };
+
+          checkPurchaseCanBeReversed(lotsMap[pid], itemMeta, qty, productName);
+          lotsMap[pid] = removePurchaseLotQuantity(lotsMap[pid], itemMeta, qty);
         }
 
         for (const pid of productIds) {
@@ -281,7 +310,10 @@ export default function PurchasesPage() {
                 type="text"
                 placeholder="Supplier, invoice, product..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  updateUrlParams({ search: e.target.value, fromDate, toDate, sortBy });
+                }}
                 className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-slate-50/50 hover:bg-white"
               />
             </div>
@@ -294,7 +326,10 @@ export default function PurchasesPage() {
             <input
               type="date"
               value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
+              onChange={(e) => {
+                setFromDate(e.target.value);
+                updateUrlParams({ search, fromDate: e.target.value, toDate, sortBy });
+              }}
               className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white"
             />
           </div>
@@ -306,7 +341,10 @@ export default function PurchasesPage() {
             <input
               type="date"
               value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
+              onChange={(e) => {
+                setToDate(e.target.value);
+                updateUrlParams({ search, fromDate, toDate: e.target.value, sortBy });
+              }}
               className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white"
             />
           </div>
@@ -317,7 +355,11 @@ export default function PurchasesPage() {
             </label>
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as "newest" | "oldest")}
+              onChange={(e) => {
+                const val = e.target.value as "newest" | "oldest";
+                setSortBy(val);
+                updateUrlParams({ search, fromDate, toDate, sortBy: val });
+              }}
               className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white"
             >
               <option value="newest">Newest First</option>
@@ -334,6 +376,7 @@ export default function PurchasesPage() {
                 setSearch("");
                 setFromDate("");
                 setToDate("");
+                updateUrlParams({ search: "", fromDate: "", toDate: "", sortBy });
               }}
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition"
             >
@@ -391,7 +434,7 @@ export default function PurchasesPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <Link
-                        href={`/dashboard/purchases/${p.id}`}
+                        href={`/dashboard/purchases/${p.id}?returnTo=${encodeURIComponent(getReturnToUrl())}`}
                         className="font-mono text-sm font-bold text-purple-700 hover:underline block truncate"
                       >
                         {p.supplierInvoice || `#${p.purchaseNumber}`}
@@ -433,7 +476,7 @@ export default function PurchasesPage() {
 
                   <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
                     <Link
-                      href={`/dashboard/purchases/${p.id}`}
+                      href={`/dashboard/purchases/${p.id}?returnTo=${encodeURIComponent(getReturnToUrl())}`}
                       className="flex-1 py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs transition inline-flex items-center justify-center gap-1.5 min-h-[44px]"
                     >
                       <Eye className="w-3.5 h-3.5" />
@@ -441,7 +484,7 @@ export default function PurchasesPage() {
                     </Link>
                     <button
                       type="button"
-                      onClick={() => router.push(`/dashboard/purchases/edit/${p.id}`)}
+                      onClick={() => router.push(`/dashboard/purchases/edit/${p.id}?returnTo=${encodeURIComponent(getReturnToUrl())}`)}
                       className="flex-1 py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-800 font-semibold text-xs transition inline-flex items-center justify-center gap-1.5 min-h-[44px] cursor-pointer"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
@@ -493,7 +536,7 @@ export default function PurchasesPage() {
 
                       <td className="py-3 px-4 whitespace-nowrap">
                         <Link
-                          href={`/dashboard/purchases/${p.id}`}
+                          href={`/dashboard/purchases/${p.id}?returnTo=${encodeURIComponent(getReturnToUrl())}`}
                           className="font-mono text-xs font-bold text-purple-700 hover:underline"
                         >
                           {p.supplierInvoice || `#${p.purchaseNumber}`}
@@ -531,7 +574,7 @@ export default function PurchasesPage() {
                       <td className="py-3 px-4 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1.5">
                           <Link
-                            href={`/dashboard/purchases/${p.id}`}
+                            href={`/dashboard/purchases/${p.id}?returnTo=${encodeURIComponent(getReturnToUrl())}`}
                             className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition"
                             title="View Purchase"
                           >
@@ -540,7 +583,7 @@ export default function PurchasesPage() {
 
                           <button
                             type="button"
-                            onClick={() => router.push(`/dashboard/purchases/edit/${p.id}`)}
+                            onClick={() => router.push(`/dashboard/purchases/edit/${p.id}?returnTo=${encodeURIComponent(getReturnToUrl())}`)}
                             className="p-1.5 rounded-lg text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
                             title="Edit Purchase"
                           >
@@ -580,5 +623,13 @@ export default function PurchasesPage() {
         onCancel={() => setDeleteModalOpen(false)}
       />
     </div>
+  );
+}
+
+export default function PurchasesPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Loading purchases...</div>}>
+      <PurchasesContent />
+    </Suspense>
   );
 }

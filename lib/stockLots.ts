@@ -112,6 +112,16 @@ export function normaliseLots(productData: {
   ];
 }
 
+export type PurchaseReversalItem = {
+  lotId?: string;
+  quantity?: number;
+  purchasePrice?: number;
+  purchasedAt?: string;
+  lotNumber?: string;
+  invoiceNumber?: string;
+  supplierName?: string;
+};
+
 /**
  * Add or merge a lot into the lots array.
  * If a lot with the same purchasePrice and purchasedAt date already exists,
@@ -123,7 +133,7 @@ export function addLot(
   purchasePrice: number,
   quantity: number,
   purchasedAt: string,
-  extra?: { supplierName?: string; invoiceNumber?: string; lotNumber?: string }
+  extra?: { supplierName?: string; invoiceNumber?: string; lotNumber?: string; customLotId?: string }
 ): { lots: StockLot[]; lotId: string } {
   // Try to find an existing lot for the same price on the same date
   const existing = lots.find(
@@ -143,7 +153,7 @@ export function addLot(
     return { lots: updated, lotId: existing.lotId };
   }
 
-  const lotId = generateLotId();
+  const lotId = extra?.customLotId || generateLotId();
   return {
     lots: [
       ...lots,
@@ -160,6 +170,69 @@ export function addLot(
     ],
     lotId,
   };
+}
+
+/**
+ * Locate the stock lot corresponding to a purchase item.
+ * Tries:
+ * 1. Exact lotId match.
+ * 2. Match by lotNumber (if provided) and purchasePrice.
+ * 3. Match by purchasedAt date and purchasePrice.
+ * 4. Match by purchasedAt date alone (if unique).
+ * 5. Match by purchasePrice alone (if unique).
+ * 6. If product has only 1 lot remaining, matches that lot.
+ */
+export function findMatchingLot(
+  lots: StockLot[],
+  item: string | PurchaseReversalItem
+): StockLot | undefined {
+  if (typeof item === "string") {
+    return lots.find((l) => l.lotId === item);
+  }
+
+  // 1. Exact lotId match
+  if (item.lotId) {
+    const exact = lots.find((l) => l.lotId === item.lotId);
+    if (exact) return exact;
+  }
+
+  // 2. Match by lotNumber (if non-empty) and purchasePrice
+  if (item.lotNumber && item.lotNumber.trim()) {
+    const trimmedNum = item.lotNumber.trim().toLowerCase();
+    const lotNumMatch = lots.find(
+      (l) =>
+        l.lotNumber?.trim().toLowerCase() === trimmedNum &&
+        (item.purchasePrice === undefined || l.purchasePrice === item.purchasePrice)
+    );
+    if (lotNumMatch) return lotNumMatch;
+  }
+
+  // 3. Match by purchasedAt date and purchasePrice
+  if (item.purchasedAt && item.purchasePrice !== undefined) {
+    const datePriceMatch = lots.find(
+      (l) => l.purchasedAt === item.purchasedAt && l.purchasePrice === item.purchasePrice
+    );
+    if (datePriceMatch) return datePriceMatch;
+  }
+
+  // 4. Match by purchasedAt alone if unique
+  if (item.purchasedAt) {
+    const dateMatches = lots.filter((l) => l.purchasedAt === item.purchasedAt);
+    if (dateMatches.length === 1) return dateMatches[0];
+  }
+
+  // 5. Match by purchasePrice alone if unique
+  if (item.purchasePrice !== undefined) {
+    const priceMatches = lots.filter((l) => l.purchasePrice === item.purchasePrice);
+    if (priceMatches.length === 1) return priceMatches[0];
+  }
+
+  // 6. If product has only 1 lot
+  if (lots.length === 1) {
+    return lots[0];
+  }
+
+  return undefined;
 }
 
 /**
@@ -192,18 +265,59 @@ export function removeLotQuantity(
  */
 export function checkPurchaseCanBeReversed(
   lots: StockLot[],
-  lotId: string,
+  itemOrLotId: string | PurchaseReversalItem,
   quantityToReverse: number,
   productName: string
-): void {
-  const lot = lots.find((l) => l.lotId === lotId);
-  const remaining = lot ? lot.quantity : 0;
-  if (!lot || remaining < quantityToReverse) {
-    const sold = quantityToReverse - remaining;
+): StockLot | undefined {
+  const lot = findMatchingLot(lots, itemOrLotId);
+
+  if (lot) {
+    if (lot.quantity < quantityToReverse) {
+      const sold = quantityToReverse - lot.quantity;
+      throw new Error(
+        `Cannot delete or modify purchase for "${productName}": ${sold} unit(s) from this purchase have already been sold in customer sales.`
+      );
+    }
+    return lot;
+  }
+
+  // If no specific lot matched, verify total available stock across product lots
+  const currentStock = totalStock(lots);
+  if (currentStock < quantityToReverse) {
+    const sold = quantityToReverse - currentStock;
     throw new Error(
       `Cannot delete or modify purchase for "${productName}": ${sold} unit(s) from this purchase have already been sold in customer sales.`
     );
   }
+
+  return undefined;
+}
+
+/**
+ * Remove quantity from lots for a purchase reversal.
+ * If target lot is identified, removes directly from that lot.
+ * Otherwise, consumes from lots in FIFO order (oldest first).
+ */
+export function removePurchaseLotQuantity(
+  lots: StockLot[],
+  itemOrLotId: string | PurchaseReversalItem,
+  quantityToReverse: number
+): StockLot[] {
+  const lot = findMatchingLot(lots, itemOrLotId);
+  if (lot) {
+    return removeLotQuantity(lots, lot.lotId, quantityToReverse);
+  }
+
+  let rem = quantityToReverse;
+  return [...lots]
+    .sort((a, b) => (a.purchasedAt ?? "").localeCompare(b.purchasedAt ?? ""))
+    .map((l) => {
+      if (rem <= 0) return l;
+      const take = Math.min(l.quantity, rem);
+      rem -= take;
+      return { ...l, quantity: l.quantity - take };
+    })
+    .filter((l) => l.quantity > 0);
 }
 
 /**
