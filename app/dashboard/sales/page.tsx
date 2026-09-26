@@ -259,9 +259,84 @@ export default function SalesPage() {
           </Link>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+        <div className="space-y-4">
+          {/* Mobile Card Feed (block md:hidden) */}
+          <div className="block md:hidden space-y-3">
+            {filteredSales.map((s) => {
+              const productNames = (s.items || [])
+                .map((i) => i.productName)
+                .filter(Boolean)
+                .join(", ") || "—";
+
+              const quantities = (s.items || [])
+                .map((i) =>
+                  `${Number(i.quantity).toLocaleString("en-IN")} ${i.unit || ""}`.trim()
+                )
+                .join(", ") || "—";
+
+              return (
+                <div
+                  key={s.id}
+                  className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <Link
+                        href={`/dashboard/sales/${s.id}`}
+                        className="font-mono text-sm font-bold text-blue-600 hover:underline block truncate"
+                      >
+                        #{s.saleNumber}
+                      </Link>
+                      <div className="text-xs font-semibold text-slate-900 mt-0.5 truncate">
+                        {s.customerName}
+                      </div>
+                    </div>
+                    <span className="text-[11px] text-slate-500 font-medium bg-slate-100 px-2 py-0.5 rounded-md shrink-0">
+                      {formatDisplayDate(s.saleDate)}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Total Sale Amount</span>
+                      <span className="font-bold text-slate-900 text-sm">
+                        ₹{s.totalAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Payment Method</span>
+                      <div className="mt-0.5">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-200 text-slate-700">
+                          {s.paymentMethod || "Cash"}
+                        </span>
+                      </div>
+                    </div>
+                    {productNames !== "—" && (
+                      <div className="col-span-2 pt-1.5 border-t border-slate-200/60 text-[11px] text-slate-600 truncate" title={productNames}>
+                        <span className="text-slate-400">Items: </span>
+                        <span>{productNames} ({quantities})</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-1 border-t border-slate-100">
+                    <Link
+                      href={`/dashboard/sales/${s.id}`}
+                      className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs transition inline-flex items-center justify-center gap-1.5 min-h-[44px]"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>View Sale Details</span>
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop Table (hidden md:block) */}
+          <div className="hidden md:block bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200/80 text-slate-500 font-semibold uppercase tracking-wider">
                   <th className="py-3 px-4">Date</th>
@@ -355,7 +430,8 @@ export default function SalesPage() {
             </table>
           </div>
         </div>
-      )}
+      </div>
+    )}
     </div>
   );
 }

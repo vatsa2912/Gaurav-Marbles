@@ -126,7 +126,7 @@ function SupplierLedgerContent() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <Link
               href="/dashboard/accounts/customer-ledger"
               className="btn-secondary text-xs inline-flex items-center gap-1.5"

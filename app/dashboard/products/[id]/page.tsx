@@ -309,7 +309,7 @@ export default function ProductDetailPage({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Link
             href={`/dashboard/purchases/add?productId=${product.id}`}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition shadow-xs"
@@ -626,7 +626,7 @@ export default function ProductDetailPage({
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1.5 text-xs text-slate-600">
               <label htmlFor="purchaseSortSelect" className="font-semibold text-slate-500">Sort:</label>
               <select

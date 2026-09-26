@@ -33,19 +33,19 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+    <main className="min-h-screen bg-slate-100 flex items-center justify-center p-3 sm:p-4">
       <div className="w-full max-w-md">
         {/* Brand Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-slate-900 text-white shadow-xl shadow-slate-900/15 mb-4 border border-slate-800">
+        <div className="text-center mb-6 sm:mb-8">
+          <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-900 text-white shadow-xl shadow-slate-900/15 mb-3 sm:mb-4 border border-slate-800">
             <span className="font-black text-2xl tracking-wider text-slate-100">GM</span>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Gaurav Marbles</h1>
-          <p className="text-sm text-slate-500 mt-1 font-medium">Marble Shop Management & Inventory ERP</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Gaurav Marbles</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Marble Shop Management & Inventory ERP</p>
         </div>
 
         {/* Login Card */}
-        <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/70 border border-slate-200/80 p-8">
+        <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/70 border border-slate-200/80 p-5 sm:p-8">
           <div className="mb-6">
             <h2 className="text-xl font-bold text-slate-900 tracking-tight">Sign In to Dashboard</h2>
             <p className="text-xs text-slate-500 mt-1">

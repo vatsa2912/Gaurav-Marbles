@@ -36,19 +36,19 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+    <main className="min-h-screen bg-slate-100 flex items-center justify-center p-3 sm:p-4">
       <div className="w-full max-w-md">
         {/* Brand Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-slate-900 text-white shadow-xl shadow-slate-900/10 mb-4">
+        <div className="text-center mb-6 sm:mb-8">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-slate-900 text-white shadow-xl shadow-slate-900/10 mb-3 sm:mb-4">
             <span className="font-extrabold text-xl tracking-wider">GM</span>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Gaurav Marbles</h1>
-          <p className="text-sm text-slate-500 mt-1 font-medium">Shop Management & Inventory ERP</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Gaurav Marbles</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">Shop Management & Inventory ERP</p>
         </div>
 
         {/* Card */}
-        <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-200/80 p-8">
+        <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-200/80 p-5 sm:p-8">
           {submitted ? (
             <div className="text-center space-y-5 animate-fadeIn">
               <div className="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center mx-auto text-emerald-600">

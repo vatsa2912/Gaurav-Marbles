@@ -74,7 +74,7 @@ export function ConfirmModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn"
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirm-modal-title"
@@ -86,11 +86,11 @@ export function ConfirmModal({
     >
       <div
         ref={modalRef}
-        className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden animate-scaleUp p-6"
+        className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden animate-scaleUp p-4 sm:p-6"
       >
-        <div className="flex items-start gap-4">
+        <div className="flex items-start gap-3 sm:gap-4">
           <div
-            className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
+            className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center shrink-0 ${
               isDestructive
                 ? "bg-rose-50 text-rose-600 border border-rose-100"
                 : "bg-blue-50 text-blue-600 border border-blue-100"
@@ -103,14 +103,14 @@ export function ConfirmModal({
             )}
           </div>
 
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <h3
               id="confirm-modal-title"
-              className="text-lg font-bold text-slate-900 leading-tight"
+              className="text-base sm:text-lg font-bold text-slate-900 leading-tight"
             >
               {title}
             </h3>
-            <p className="text-sm text-slate-600 mt-2 leading-relaxed whitespace-pre-line">
+            <p className="text-xs sm:text-sm text-slate-600 mt-1.5 sm:mt-2 leading-relaxed whitespace-pre-line">
               {message}
             </p>
           </div>
@@ -119,19 +119,19 @@ export function ConfirmModal({
             type="button"
             onClick={handleClose}
             disabled={isBusy}
-            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition disabled:opacity-50"
+            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition disabled:opacity-50 shrink-0"
             aria-label="Close dialog"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+        <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center sm:justify-end gap-2 sm:gap-3 mt-5 sm:mt-6 pt-4 border-t border-slate-100">
           <button
             type="button"
             onClick={handleClose}
             disabled={isBusy}
-            className="btn-secondary text-sm px-4 py-2"
+            className="btn-secondary text-sm px-4 py-2.5 sm:py-2 w-full sm:w-auto text-center justify-center"
           >
             {effectiveCancel}
           </button>
@@ -141,7 +141,7 @@ export function ConfirmModal({
             type="button"
             onClick={onConfirm}
             disabled={isBusy}
-            className={`text-sm font-semibold px-4 py-2 rounded-lg text-white transition flex items-center gap-2 ${
+            className={`text-sm font-semibold px-4 py-2.5 sm:py-2 rounded-lg text-white transition flex items-center justify-center gap-2 w-full sm:w-auto ${
               isDestructive
                 ? "bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:bg-rose-400 shadow-xs"
                 : "bg-slate-900 hover:bg-slate-800 active:bg-slate-950 disabled:bg-slate-400 shadow-xs"

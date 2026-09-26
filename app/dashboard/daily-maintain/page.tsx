@@ -453,11 +453,11 @@ export default function DailyMaintainPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => changeDay(-1)}
-              className="btn-secondary px-3 py-1.5 text-sm"
+              className="btn-secondary px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm"
               title="Previous Day"
             >
               ← Prev Day
@@ -466,12 +466,12 @@ export default function DailyMaintainPage() {
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="font-semibold text-sm border border-gray-300 rounded-lg px-3 py-1.5"
+              className="font-semibold text-xs sm:text-sm border border-gray-300 rounded-lg px-2.5 sm:px-3 py-1.5 min-w-[130px]"
             />
             <button
               type="button"
               onClick={() => changeDay(1)}
-              className="btn-secondary px-3 py-1.5 text-sm"
+              className="btn-secondary px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm"
               title="Next Day"
             >
               Next Day →
@@ -479,7 +479,7 @@ export default function DailyMaintainPage() {
             <button
               type="button"
               onClick={() => setSelectedDate(getTodayDateString())}
-              className="btn-ghost text-xs text-blue-600 font-semibold hover:underline px-2"
+              className="btn-ghost text-xs text-blue-600 font-semibold hover:underline px-2 py-1"
             >
               Today
             </button>
@@ -501,8 +501,8 @@ export default function DailyMaintainPage() {
               </p>
             </div>
 
-            <div className="flex items-end gap-3">
-              <div className="form-field mb-0">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2.5 sm:gap-3 w-full sm:w-auto">
+              <div className="form-field mb-0 w-full sm:w-auto">
                 <label className="text-xs font-semibold text-gray-700">
                   Opening Cash for Day (₹)
                 </label>
@@ -515,14 +515,14 @@ export default function DailyMaintainPage() {
                     setOpeningCash(e.target.value);
                     setOpeningCashSaved(false);
                   }}
-                  className="w-36 font-bold text-base"
+                  className="w-full sm:w-36 font-bold text-base"
                 />
               </div>
               <button
                 type="button"
                 onClick={handleSaveOpeningCash}
                 disabled={savingCash}
-                className="btn-primary py-2 text-sm"
+                className="btn-primary py-2.5 sm:py-2 text-sm w-full sm:w-auto text-center justify-center"
               >
                 {savingCash ? "Saving..." : openingCashSaved ? "✓ Saved" : "Save Opening Cash"}
               </button>

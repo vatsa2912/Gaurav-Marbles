@@ -677,11 +677,11 @@ export default function EditProductPage({
 
           {error && <p className="text-error mt-5">{error}</p>}
 
-          <div className="mt-8 flex justify-end gap-3">
+          <div className="mt-8 flex flex-col-reverse sm:flex-row items-stretch sm:items-center sm:justify-end gap-2.5 sm:gap-3">
             <button
               type="button"
               onClick={() => router.push("/dashboard/products")}
-              className="btn-secondary"
+              className="btn-secondary w-full sm:w-auto text-center justify-center"
             >
               Cancel
             </button>
@@ -689,7 +689,7 @@ export default function EditProductPage({
             <button
               type="submit"
               disabled={saving}
-              className="btn-primary"
+              className="btn-primary w-full sm:w-auto text-center justify-center"
             >
               {saving ? "Saving Changes..." : "Save Changes"}
             </button>

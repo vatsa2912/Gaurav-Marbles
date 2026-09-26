@@ -1034,7 +1034,7 @@ function AddPurchaseContent() {
                       Auto-Balance Credit/Due →
                     </button>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
                     <div>
                       <label className="text-[11px] font-semibold text-gray-600">Cash (₹)</label>
                       <input
@@ -1149,13 +1149,13 @@ function AddPurchaseContent() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-2 justify-between sm:justify-end">
                       {/* Per-Item Type Selector */}
-                      <div className="inline-flex rounded-lg p-1 bg-gray-100 border border-gray-200">
+                      <div className="inline-flex rounded-lg p-0.5 sm:p-1 bg-gray-100 border border-gray-200">
                         <button
                           type="button"
                           onClick={() => updateItem(index, { purchaseType: "Existing Product" })}
-                          className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                          className={`px-2.5 sm:px-3 py-1 text-xs font-bold rounded-md transition-all ${
                             !isNew
                               ? "bg-white text-gray-900 shadow-sm border border-gray-200"
                               : "text-gray-600 hover:text-gray-900"
@@ -1166,7 +1166,7 @@ function AddPurchaseContent() {
                         <button
                           type="button"
                           onClick={() => updateItem(index, { purchaseType: "New Product" })}
-                          className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                          className={`px-2.5 sm:px-3 py-1 text-xs font-bold rounded-md transition-all ${
                             isNew
                               ? "bg-purple-600 text-white shadow-sm"
                               : "text-gray-600 hover:text-gray-900"
@@ -1181,7 +1181,7 @@ function AddPurchaseContent() {
                         <button
                           type="button"
                           onClick={() => handleRemoveItem(index)}
-                          className="text-xs font-semibold text-red-600 hover:text-red-800 px-2 py-1 hover:bg-red-50 rounded border border-transparent hover:border-red-200"
+                          className="text-xs font-semibold text-red-600 hover:text-red-800 px-2 py-1 hover:bg-red-50 rounded border border-transparent hover:border-red-200 shrink-0"
                           title="Remove this item from invoice"
                         >
                           ✕ Remove
@@ -1748,17 +1748,17 @@ function AddPurchaseContent() {
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-3 pt-2">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center sm:justify-end gap-2.5 sm:gap-3 pt-2">
               <Link
                 href="/dashboard/purchases"
-                className="btn-secondary text-xs text-center py-2.5 px-4 bg-gray-700 text-white border-gray-600 hover:bg-gray-600"
+                className="btn-secondary text-xs text-center py-2.5 px-4 bg-gray-700 text-white border-gray-600 hover:bg-gray-600 w-full sm:w-auto"
               >
                 Cancel
               </Link>
               <button
                 type="submit"
                 disabled={saving}
-                className="btn-primary text-sm font-bold py-2.5 px-8 bg-emerald-500 hover:bg-emerald-600 text-white border-none shadow-md disabled:opacity-50"
+                className="btn-primary text-sm font-bold py-2.5 px-8 bg-emerald-500 hover:bg-emerald-600 text-white border-none shadow-md disabled:opacity-50 w-full sm:w-auto text-center justify-center"
               >
                 {saving ? "Saving Invoice..." : "Save Purchase Invoice"}
               </button>

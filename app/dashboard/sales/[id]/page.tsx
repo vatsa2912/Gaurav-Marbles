@@ -461,10 +461,10 @@ export default function SaleDetailsPage() {
             ← Back to Sales
           </button>
 
-          <div className="flex items-center justify-between mt-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-4">
             <div>
               <div className="flex items-center gap-3">
-                <h2 className="text-2xl">
+                <h2 className="text-2xl font-bold">
                   Sale #{sale.saleNumber}
                 </h2>
                 <span
@@ -484,7 +484,7 @@ export default function SaleDetailsPage() {
                 </span>
               </div>
 
-              <div className="flex items-center gap-4 mt-1 text-muted text-sm">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-muted text-sm">
                 <span>Sale Date: {formatDisplayDate(sale.saleDate)}</span>
                 {sale.dueDate && (
                   <span style={{ color: paymentStatus === "overdue" ? "#dc2626" : undefined, fontWeight: paymentStatus === "overdue" ? 600 : undefined }}>
@@ -494,14 +494,14 @@ export default function SaleDetailsPage() {
               </div>
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
               <button
                 onClick={() =>
                   router.push(
                     `/dashboard/sales/edit/${saleId}`
                   )
                 }
-                className="btn-secondary"
+                className="btn-secondary text-xs sm:text-sm py-2 px-3.5"
               >
                 Edit Sale
               </button>
@@ -509,7 +509,7 @@ export default function SaleDetailsPage() {
               <button
                 onClick={() => setDeleteSaleModalOpen(true)}
                 disabled={deleting}
-                className="btn-primary"
+                className="btn-primary text-xs sm:text-sm py-2 px-3.5"
                 style={{
                   background: "#dc2626",
                 }}

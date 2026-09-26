@@ -112,6 +112,23 @@ label {
   .page-content-narrow { padding: 2.5rem 2rem; }
 }
 
+/* Prevent double padding & duplicate headers when nested inside dashboard layout shell */
+main.flex-1 .page-main {
+  min-height: auto;
+  background: transparent;
+}
+main.flex-1 .site-header {
+  display: none;
+}
+main.flex-1 .page-content {
+  padding: 0;
+  max-width: 100%;
+}
+main.flex-1 .page-content-narrow {
+  padding: 0;
+  max-width: 52rem;
+}
+
 /* ─── Cards & Containers ─────────────────────────────────────────── */
 
 .card {
@@ -121,6 +138,12 @@ label {
   padding: 1.5rem;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+@media (max-width: 639px) {
+  .card {
+    padding: 1rem;
+  }
 }
 
 .card-interactive:hover {
