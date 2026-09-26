@@ -18,6 +18,7 @@ import {
   totalStock,
   type StockLot,
 } from "@/lib/stockLots";
+import { sanitizeFirestoreData, assertNoUndefined } from "@/lib/firestoreUtils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -297,12 +298,13 @@ export default function EditPurchasePage() {
 
         if (!itemsChanged) {
           // Metadata-only update (supplier, invoice, date) — no risk of lot corruption or stealing
-          transaction.update(purchaseRef, {
+          const metaUpdate = sanitizeFirestoreData({
             supplierName: supplierName.trim(),
             supplierInvoice: supplierInvoice.trim(),
             purchaseDate,
             totalAmount,
           });
+          transaction.update(purchaseRef, metaUpdate);
           return;
         }
 
@@ -364,7 +366,7 @@ export default function EditPurchasePage() {
         }
 
         // Step 5: Update purchase document
-        transaction.update(purchaseRef, {
+        const purchaseUpdate = sanitizeFirestoreData({
           supplierName: supplierName.trim(),
           supplierInvoice: supplierInvoice.trim(),
           purchaseDate,
@@ -383,13 +385,15 @@ export default function EditPurchasePage() {
           }),
           totalAmount,
         });
+        transaction.update(purchaseRef, purchaseUpdate);
 
         // Step 6: Update each product's stockLots + stock
         for (const pid of allProductIds) {
-          transaction.update(doc(db, "products", pid), {
+          const productUpdate = sanitizeFirestoreData({
             stockLots: lotsMap[pid],
             stock: totalStock(lotsMap[pid]),
           });
+          transaction.update(doc(db, "products", pid), productUpdate);
         }
       });
 

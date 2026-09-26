@@ -89,9 +89,9 @@ function RecordVoucherDialog({
         amount: numAmount,
         paymentMode,
         account,
-        referenceNumber: referenceNumber.trim() || undefined,
-        narration: narration.trim() || undefined,
-        againstInvoiceNo: againstInvoice.trim() || undefined,
+        referenceNumber: referenceNumber.trim() || "",
+        narration: narration.trim() || "",
+        againstInvoiceNo: againstInvoice.trim() || "",
       });
 
       onVoucherSaved();

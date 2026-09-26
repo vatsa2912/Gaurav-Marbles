@@ -23,6 +23,7 @@ import { getParties } from "@/lib/ledgerService";
 import { type Party } from "@/lib/ledgerTypes";
 import Link from "next/link";
 import { useToast } from "@/components/ui/ToastContext";
+import { sanitizeFirestoreData, assertNoUndefined } from "@/lib/firestoreUtils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -697,13 +698,16 @@ function AddPurchaseContent() {
               purchasedAt: purchaseDate,
               supplierName: supplierName.trim(),
               invoiceNumber: supplierInvoice.trim(),
-              lotNumber:
-                it.newCategory === "Marble" && it.newMarbleType === "Cut Size"
-                  ? undefined
-                  : it.newLotNumber.trim() || undefined,
             };
+            const trimmedNewLotNumber = it.newLotNumber.trim();
+            if (
+              trimmedNewLotNumber &&
+              !(it.newCategory === "Marble" && it.newMarbleType === "Cut Size")
+            ) {
+              initialLot.lotNumber = trimmedNewLotNumber;
+            }
 
-            const newProductDoc: any = {
+            const newProductDoc: Record<string, any> = {
               name: it.newProductName.trim(),
               category: it.newCategory.trim(),
               unit: it.newUnit.trim(),
@@ -745,9 +749,13 @@ function AddPurchaseContent() {
             if (it.newGstRate) newProductDoc.gstRate = Number(it.newGstRate);
             if (it.newMinimumStock) newProductDoc.minimumStock = Number(it.newMinimumStock);
 
-            transaction.set(newDocRef, newProductDoc);
+            const cleanNewProductDoc = sanitizeFirestoreData(newProductDoc);
+            if (process.env.NODE_ENV !== "production") {
+              assertNoUndefined(cleanNewProductDoc, `New Product document (${newPid})`);
+            }
+            transaction.set(newDocRef, cleanNewProductDoc);
 
-            finalPurchaseItems.push({
+            const purchaseItem: Record<string, any> = {
               productId: newPid,
               productName: it.newProductName.trim(),
               category: it.newCategory.trim(),
@@ -765,45 +773,62 @@ function AddPurchaseContent() {
                 it.newCategory === "Marble" && it.newMarbleType === "Cut Size"
                   ? it.newCutSize.trim()
                   : it.newTileSize.trim() || "",
-              pieces: it.newPieces ? Number(it.newPieces) : undefined,
               purchasedAt: purchaseDate,
-            });
+            };
+
+            if (it.newPieces && it.newPieces.trim() !== "" && !isNaN(Number(it.newPieces))) {
+              purchaseItem.pieces = Number(it.newPieces);
+            }
+
+            finalPurchaseItems.push(purchaseItem);
           } else {
             // Existing Product
             const pid = it.productId;
             const prod = it.selectedProduct!;
             const qty = Number(it.existingQty);
             const pPrice = Number(it.existingPurchasePrice);
-            const sPrice = it.existingSellingPrice ? Number(it.existingSellingPrice) : prod.sellingPrice;
+            const sPrice =
+              it.existingSellingPrice.trim() !== ""
+                ? Number(it.existingSellingPrice)
+                : prod.sellingPrice !== undefined && prod.sellingPrice !== null
+                ? Number(prod.sellingPrice)
+                : undefined;
             const itemTotal = qty * pPrice;
             const lotId = lotIds[it.id];
 
-            const addRes = addLot(lotsMap[pid], pPrice, qty, purchaseDate, {
+            const extraLotInfo: { supplierName?: string; invoiceNumber?: string; lotNumber?: string } = {
               supplierName: supplierName.trim(),
               invoiceNumber: supplierInvoice.trim(),
-              lotNumber:
-                prod.category === "Marble" && prod.marbleType === "Cut Size"
-                  ? undefined
-                  : it.existingLotNumber.trim() || undefined,
-            });
+            };
+            const trimmedLotNum = it.existingLotNumber.trim() || (prod.lotNumber ? String(prod.lotNumber).trim() : "");
+            if (
+              trimmedLotNum &&
+              !(prod.category === "Marble" && prod.marbleType === "Cut Size")
+            ) {
+              extraLotInfo.lotNumber = trimmedLotNum;
+            }
+
+            const addRes = addLot(lotsMap[pid], pPrice, qty, purchaseDate, extraLotInfo);
             lotsMap[pid] = addRes.lots;
+
+            const estStockVal =
+              it.existingEstimatedStock.trim() !== "" && !isNaN(Number(it.existingEstimatedStock))
+                ? Number(it.existingEstimatedStock)
+                : undefined;
 
             latestPriceMap[pid] = {
               purchasePrice: pPrice,
-              sellingPrice: sPrice,
-              estimatedStock: it.existingEstimatedStock
-                ? Number(it.existingEstimatedStock)
-                : undefined,
+              ...(sPrice !== undefined && !isNaN(sPrice) ? { sellingPrice: sPrice } : {}),
+              ...(estStockVal !== undefined ? { estimatedStock: estStockVal } : {}),
             };
 
-            finalPurchaseItems.push({
+            const purchaseItem: Record<string, any> = {
               productId: pid,
-              productName: prod.name,
+              productName: prod.name || "Product",
               category: prod.category || "General",
               quantity: qty,
               unit: prod.unit || "unit",
               purchasePrice: pPrice,
-              sellingPrice: sPrice,
               total: itemTotal,
               lotId,
               lotNumber:
@@ -811,9 +836,20 @@ function AddPurchaseContent() {
                   ? ""
                   : it.existingLotNumber.trim() || prod.lotNumber || "",
               size: prod.size || "",
-              pieces: it.existingPieces ? Number(it.existingPieces) : undefined,
               purchasedAt: purchaseDate,
-            });
+            };
+
+            // Only set sellingPrice if it is defined and a valid number
+            if (sPrice !== undefined && sPrice !== null && !isNaN(sPrice)) {
+              purchaseItem.sellingPrice = Number(sPrice);
+            }
+
+            // Only set pieces if entered and a valid number
+            if (it.existingPieces && it.existingPieces.trim() !== "" && !isNaN(Number(it.existingPieces))) {
+              purchaseItem.pieces = Number(it.existingPieces);
+            }
+
+            finalPurchaseItems.push(purchaseItem);
           }
         }
 
@@ -826,17 +862,21 @@ function AddPurchaseContent() {
             stock: newStock,
             updatedAt: serverTimestamp(),
           };
-          if (latestPriceMap[pid]?.purchasePrice !== undefined) {
+          if (latestPriceMap[pid]?.purchasePrice !== undefined && !isNaN(latestPriceMap[pid].purchasePrice)) {
             updates.purchasePrice = latestPriceMap[pid].purchasePrice;
           }
-          if (latestPriceMap[pid]?.sellingPrice !== undefined) {
+          if (latestPriceMap[pid]?.sellingPrice !== undefined && latestPriceMap[pid].sellingPrice !== null && !isNaN(latestPriceMap[pid].sellingPrice)) {
             updates.sellingPrice = latestPriceMap[pid].sellingPrice;
           }
-          if (latestPriceMap[pid]?.estimatedStock !== undefined) {
+          if (latestPriceMap[pid]?.estimatedStock !== undefined && !isNaN(latestPriceMap[pid].estimatedStock)) {
             updates.estimatedStock = latestPriceMap[pid].estimatedStock;
           }
 
-          transaction.update(doc(db, "products", pid), updates);
+          const cleanUpdates = sanitizeFirestoreData(updates);
+          if (process.env.NODE_ENV !== "production") {
+            assertNoUndefined(cleanUpdates, `Product document updates (ID: ${pid})`);
+          }
+          transaction.update(doc(db, "products", pid), cleanUpdates);
         }
 
         // Step E: Create single purchase invoice document
@@ -860,7 +900,7 @@ function AddPurchaseContent() {
           dueAmt = Number(creditAmount) || 0;
         }
 
-        const purchaseData: any = {
+        const purchaseData: Record<string, any> = {
           purchaseNumber,
           purchaseDate,
           supplierName: supplierName.trim(),
@@ -882,7 +922,11 @@ function AddPurchaseContent() {
           purchaseData.creditAmount = Number(creditAmount) || 0;
         }
 
-        transaction.set(newPurchaseRef, purchaseData);
+        const cleanPurchaseData = sanitizeFirestoreData(purchaseData);
+        if (process.env.NODE_ENV !== "production") {
+          assertNoUndefined(cleanPurchaseData, `Purchase invoice (ID: ${newPurchaseRef.id})`);
+        }
+        transaction.set(newPurchaseRef, cleanPurchaseData);
       });
 
       showToast("Purchase invoice recorded successfully.", "success");

@@ -16,6 +16,7 @@ import {
   formatTallyDate,
 } from "./ledgerTypes";
 import { getShopSettings } from "./invoiceService";
+import { sanitizeFirestoreData } from "./firestoreUtils";
 
 const PARTIES_COLLECTION = "parties";
 const VOUCHERS_COLLECTION = "vouchers";
@@ -128,7 +129,7 @@ export async function saveParty(party: Partial<Party>): Promise<string> {
   const partyId = party.id || doc(collection(db, PARTIES_COLLECTION)).id;
   const now = new Date().toISOString();
 
-  const partyData: Party = {
+  const partyData: Record<string, any> = {
     id: partyId,
     name: (party.name || "").trim(),
     type: party.type || "Customer",
@@ -140,7 +141,6 @@ export async function saveParty(party: Partial<Party>): Promise<string> {
     phone: party.phone || "",
     openingBalance: Number(party.openingBalance) || 0,
     openingBalanceType: party.openingBalanceType || "Debit",
-    creditLimit: party.creditLimit ? Number(party.creditLimit) : undefined,
     paymentTerms: party.paymentTerms || "",
     status: party.status || "Active",
     notes: party.notes || "",
@@ -148,7 +148,11 @@ export async function saveParty(party: Partial<Party>): Promise<string> {
     updatedAt: now,
   };
 
-  await setDoc(doc(db, PARTIES_COLLECTION, partyId), partyData, { merge: true });
+  if (party.creditLimit !== undefined && party.creditLimit !== null && !isNaN(Number(party.creditLimit))) {
+    partyData.creditLimit = Number(party.creditLimit);
+  }
+
+  await setDoc(doc(db, PARTIES_COLLECTION, partyId), sanitizeFirestoreData(partyData), { merge: true });
   return partyId;
 }
 
@@ -202,11 +206,11 @@ export async function recordVoucher(voucher: {
       ? voucher.referenceNumber.trim()
       : String(Math.floor(1000 + Math.random() * 9000));
 
-  await setDoc(vchRef, {
+  await setDoc(vchRef, sanitizeFirestoreData({
     ...voucher,
     voucherNumber,
     createdAt: now,
-  });
+  }));
 
   // Sync with `payments` collection
   if (voucher.voucherType === "Receipt" || voucher.voucherType === "Payment") {

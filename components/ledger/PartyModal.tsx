@@ -80,14 +80,14 @@ function PartyDialog({
         city: city.trim() || "Firozabad",
         state: state.trim() || "Uttar Pradesh",
         stateCode: stateCode.trim() || "09",
-        gstin: gstin.trim() || undefined,
-        phone: phone.trim() || undefined,
+        gstin: gstin.trim() || "",
+        phone: phone.trim() || "",
         openingBalance: parseFloat(openingBalance) || 0,
         openingBalanceType,
         creditLimit: creditLimit ? parseFloat(creditLimit) : undefined,
-        paymentTerms: paymentTerms.trim() || undefined,
+        paymentTerms: paymentTerms.trim() || "",
         status,
-        notes: notes.trim() || undefined,
+        notes: notes.trim() || "",
       });
 
       onSaved();
